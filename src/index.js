@@ -1,0 +1,42 @@
+import { parseArguments, printHelp, printVersion } from './cli/arguments.js';
+import { resolveOptions } from './cli/prompts.js';
+import { generateProject } from './generators/project.generator.js';
+import { GenerationError } from './utils/errors.js';
+import { logger } from './utils/logger.js';
+
+async function main() {
+  try {
+    const parsed = parseArguments(process.argv);
+
+    if (parsed.help) {
+      printHelp();
+      return;
+    }
+
+    if (parsed.version) {
+      printVersion();
+      return;
+    }
+
+    const options = await resolveOptions(parsed);
+    await generateProject(options);
+  } catch (error) {
+    if (error instanceof GenerationError) {
+      logger.error('Generation failed.');
+      logger.error(`Step: ${error.step}`);
+      logger.error(`Command: ${error.command}`);
+      logger.error(`Target directory: ${error.targetDirectory}`);
+      if (error.message) {
+        logger.error(error.message);
+      }
+      process.exitCode = 1;
+      return;
+    }
+
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    logger.error(message);
+    process.exitCode = 1;
+  }
+}
+
+await main();

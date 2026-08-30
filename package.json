@@ -1,0 +1,46 @@
+{
+  "name": "create-fullstack-app",
+  "version": "4.0.0",
+  "description": "Generic full-stack project, feature, and production infrastructure generator for ASP.NET Core Clean Architecture with React (Next.js or Vite) or Angular clients.",
+  "keywords": [
+    "generator",
+    "scaffold",
+    "dotnet",
+    "nextjs",
+    "vite",
+    "angular",
+    "react",
+    "clean-architecture",
+    "fullstack",
+    "auth",
+    "jwt",
+    "crud",
+    "relationships"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "create-fullstack-app": "./bin/create-fullstack-app.js",
+    "create-fullstack-feature": "./bin/create-fullstack-feature.js",
+    "create-fullstack-module": "./bin/create-fullstack-module.js"
+  },
+  "main": "./src/index.js",
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/**/*.test.js",
+    "test:unit": "node --test test/**/*.test.js",
+    "smoke": "node scripts/smoke-test.js",
+    "smoke:v3": "node scripts/smoke-v3.js",
+    "smoke:v4": "node scripts/smoke-v4.js",
+    "lint": "node scripts/lint.js"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.8.0"
+  }
+}

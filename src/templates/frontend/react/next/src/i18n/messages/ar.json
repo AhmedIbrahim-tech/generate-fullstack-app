@@ -1,0 +1,10 @@
+{
+  "home": {
+    "title": "مرحباً بك في __DISPLAY_NAME__",
+    "description": "قالب عام لتطبيقات الويب كاملة المكدس."
+  },
+  "example": {
+    "title": "أمثلة",
+    "description": "نموذج معماري: صفحة، خطاف تحكم، thunk غير متزامن، خدمة، apiClient."
+  }
+}

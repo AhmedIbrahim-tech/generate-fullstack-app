@@ -1,0 +1,10 @@
+{
+  "home": {
+    "title": "Welcome to __DISPLAY_NAME__",
+    "description": "A generic full-stack starter for web applications."
+  },
+  "example": {
+    "title": "Examples",
+    "description": "Architecture sample: page, controller hook, async thunk, service, apiClient."
+  }
+}
