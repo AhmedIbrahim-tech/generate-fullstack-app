@@ -10,7 +10,10 @@ import {
   getFrontendDirectory,
   getBackendFilePath,
   getFrontendFilePath,
+  getBackendRelativePath,
+  getFrontendRelativePath,
 } from '../src/utils/project-paths.js';
+import { readManifest, writeManifest, resolveFrontendStrategy, findProjectRoot } from '../src/feature-generator/utils/manifest.js';
 import { writeGenerationManifest } from '../src/generators/manifest.generator.js';
 import { buildFeatureConfig } from '../src/feature-generator/feature.config.js';
 import { planBackendFeature } from '../src/feature-generator/backend/backend-feature.generator.js';
@@ -19,36 +22,93 @@ import { planAuthBackend } from '../src/module-generator/auth/auth-backend.gener
 import { planAuthFrontend } from '../src/module-generator/auth/auth-frontend.generator.js';
 import { setModuleManifestContext } from '../src/module-generator/modules-orchestrator-helpers.js';
 
-test('resolveProjectPaths computes correct path conventions for all 3 modes', () => {
-  // 1. Full Stack
+test('resolveProjectPaths handles null, undefined, and empty manifest without throwing', () => {
+  // Null manifest
+  const nullRes = resolveProjectPaths(null);
+  assert.deepEqual(nullRes, { backend: null, frontend: null });
+
+  // Undefined manifest
+  const undefRes = resolveProjectPaths(undefined);
+  assert.deepEqual(undefRes, { backend: null, frontend: null });
+
+  // Non-object manifest
+  const strRes = resolveProjectPaths('invalid-manifest');
+  assert.deepEqual(strRes, { backend: null, frontend: null });
+
+  // Empty object manifest
+  const emptyRes = resolveProjectPaths({});
+  assert.deepEqual(emptyRes, { backend: null, frontend: null });
+});
+
+test('resolveProjectPaths infers paths from backend/frontend blocks when paths property is missing', () => {
+  // Full Stack inference
   const fullstack = resolveProjectPaths({
     backend: { enabled: true },
     frontend: { enabled: true, library: 'react' },
   });
   assert.deepEqual(fullstack, { backend: 'Backend', frontend: 'Frontend' });
 
-  // 2. Backend Only
+  // Backend Only inference
   const backendOnly = resolveProjectPaths({
     backend: { enabled: true },
-    frontend: { enabled: false, library: null },
+    frontend: { enabled: false },
   });
   assert.deepEqual(backendOnly, { backend: '.', frontend: null });
 
-  // 3. Frontend Only
+  // Frontend Only inference
   const frontendOnly = resolveProjectPaths({
     backend: { enabled: false },
     frontend: { enabled: true, library: 'react' },
   });
   assert.deepEqual(frontendOnly, { backend: null, frontend: '.' });
+});
 
-  // 4. Respect explicit paths if already present
+test('resolveProjectPaths respects explicit paths property', () => {
   const explicit = resolveProjectPaths({
     paths: { backend: 'Backend', frontend: 'Frontend' },
   });
   assert.deepEqual(explicit, { backend: 'Backend', frontend: 'Frontend' });
+
+  const explicitBack = resolveProjectPaths({
+    paths: { backend: '.', frontend: null },
+  });
+  assert.deepEqual(explicitBack, { backend: '.', frontend: null });
+
+  const explicitFront = resolveProjectPaths({
+    paths: { backend: null, frontend: '.' },
+  });
+  assert.deepEqual(explicitFront, { backend: null, frontend: '.' });
 });
 
-test('project path helpers resolve directories and file paths accurately', () => {
+test('project path helpers safely handle null and undefined manifests', () => {
+  const root = path.join('workspace', 'MyProject');
+
+  // Relative path helpers with null/undefined
+  assert.equal(getBackendRelativePath(null), null);
+  assert.equal(getFrontendRelativePath(null), null);
+  assert.equal(getBackendRelativePath(undefined), null);
+  assert.equal(getFrontendRelativePath(undefined), null);
+
+  // Directory helpers with null manifest
+  assert.equal(getBackendDirectory(root, null), null);
+  assert.equal(getFrontendDirectory(root, null), null);
+  assert.equal(getBackendDirectory(null, { paths: { backend: 'Backend', frontend: 'Frontend' } }), null);
+
+  // File path helpers with null manifest default to direct relative path
+  assert.equal(
+    getBackendFilePath(null, 'Domain', 'Entities', 'User.cs'),
+    path.join('Domain', 'Entities', 'User.cs'),
+  );
+  assert.equal(
+    getFrontendFilePath(null, 'src', 'modules', 'users'),
+    path.join('src', 'modules', 'users'),
+  );
+
+  // Required arguments validation
+  assert.throws(() => getBackendFilePath(null, ''), /projectFolder is required/);
+});
+
+test('project path helpers resolve directories and file paths accurately with valid manifests', () => {
   const root = path.join('workspace', 'MyProject');
 
   // Full Stack
@@ -86,6 +146,62 @@ test('project path helpers resolve directories and file paths accurately', () =>
   assert.equal(
     getFrontendFilePath(frontManifest, 'src', 'modules', 'users'),
     path.join('src', 'modules', 'users'),
+  );
+});
+
+test('readManifest provides meaningful error messages for missing, empty, or invalid manifest files', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'manifest-errors-'));
+
+  // 1. Missing project root
+  await assert.rejects(
+    async () => await readManifest(''),
+    /Project root directory is required/i,
+  );
+
+  // 2. Non-existent manifest
+  await assert.rejects(
+    async () => await readManifest(tempDir),
+    /Project manifest not found at/i,
+  );
+
+  // 3. Malformed JSON manifest
+  const malformedPath = path.join(tempDir, '.fullstack-app.json');
+  fs.writeFileSync(malformedPath, '{ not-valid-json }', 'utf8');
+  await assert.rejects(
+    async () => await readManifest(tempDir),
+    /Malformed JSON in manifest/i,
+  );
+
+  // 4. Non-object manifest
+  fs.writeFileSync(malformedPath, '"just a string"', 'utf8');
+  await assert.rejects(
+    async () => await readManifest(tempDir),
+    /Invalid manifest format/i,
+  );
+
+  // 5. Valid manifest reads correctly
+  fs.writeFileSync(malformedPath, JSON.stringify({ projectName: 'TestApp' }), 'utf8');
+  const loaded = await readManifest(tempDir);
+  assert.equal(loaded.projectName, 'TestApp');
+
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test('resolveFrontendStrategy safely handles null, undefined, and non-object inputs', () => {
+  assert.deepEqual(resolveFrontendStrategy(null), { library: null, framework: null });
+  assert.deepEqual(resolveFrontendStrategy(undefined), { library: null, framework: null });
+  assert.deepEqual(resolveFrontendStrategy({}), { library: null, framework: null });
+  assert.deepEqual(
+    resolveFrontendStrategy({ frontend: { library: 'react', framework: 'next' } }),
+    { library: 'react', framework: 'next' },
+  );
+  assert.deepEqual(
+    resolveFrontendStrategy({ frontend: { library: 'react', framework: 'vite' } }),
+    { library: 'react', framework: 'vite' },
+  );
+  assert.deepEqual(
+    resolveFrontendStrategy({ frontend: { library: 'angular' } }),
+    { library: 'angular', framework: null },
   );
 });
 

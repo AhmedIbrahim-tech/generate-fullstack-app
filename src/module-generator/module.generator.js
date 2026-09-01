@@ -135,6 +135,7 @@ export async function generateModule(options) {
     const plan = await planModule(id, {
       projectName,
       projectRoot,
+      manifest,
       frontendStrategy,
       defaultRole: options.defaultRole ?? 'User',
       roles: options.roles ?? ['Admin', 'Editor', 'User'],
@@ -216,6 +217,9 @@ export async function installEnabledModules(options) {
  * @param {object} config
  */
 async function planModule(moduleId, config) {
+  if (config.manifest) {
+    setModuleManifestContext(config.manifest);
+  }
   switch (moduleId) {
     case 'auth':
       return planAuthCombined(config);

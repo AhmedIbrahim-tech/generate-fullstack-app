@@ -11,16 +11,17 @@ import path from 'node:path';
  * @param {object} [manifest]
  * @returns {{ backend: string | null, frontend: string | null }}
  */
-export function resolveProjectPaths(manifest = {}) {
-  const paths = manifest.paths ?? {};
+export function resolveProjectPaths(manifest) {
+  const safeManifest = manifest && typeof manifest === 'object' ? manifest : {};
+  const paths = safeManifest.paths && typeof safeManifest.paths === 'object' ? safeManifest.paths : {};
   let backend = paths.backend;
   let frontend = paths.frontend;
 
   const hasBackend = Boolean(
-    manifest.backend?.enabled ?? (manifest.backend === true || manifest.backend === 'aspnet-core'),
+    safeManifest.backend?.enabled ?? (safeManifest.backend === true || safeManifest.backend === 'aspnet-core'),
   );
   const hasFrontend = Boolean(
-    manifest.frontend?.enabled ?? (manifest.frontend?.library || manifest.frontend === true),
+    safeManifest.frontend?.enabled ?? (safeManifest.frontend?.library || safeManifest.frontend === true),
   );
 
   if (backend === undefined) {
@@ -67,6 +68,7 @@ export function getFrontendRelativePath(manifest) {
  * @returns {string | null}
  */
 export function getBackendDirectory(projectRoot, manifest) {
+  if (!projectRoot) return null;
   const rel = getBackendRelativePath(manifest);
   if (!rel) return null;
   return rel === '.' ? projectRoot : path.join(projectRoot, rel);
@@ -79,6 +81,7 @@ export function getBackendDirectory(projectRoot, manifest) {
  * @returns {string | null}
  */
 export function getFrontendDirectory(projectRoot, manifest) {
+  if (!projectRoot) return null;
   const rel = getFrontendRelativePath(manifest);
   if (!rel) return null;
   return rel === '.' ? projectRoot : path.join(projectRoot, rel);
@@ -86,11 +89,14 @@ export function getFrontendDirectory(projectRoot, manifest) {
 
 /**
  * Builds a backend relative file path (e.g. "Backend/Domain/..." or "Domain/...").
- * @param {object} manifest
+ * @param {object} [manifest]
  * @param {string} projectFolder 'Domain'|'Application'|'Infrastructure'|'API'
  * @param {...string} segments
  */
 export function getBackendFilePath(manifest, projectFolder, ...segments) {
+  if (!projectFolder) {
+    throw new Error('projectFolder is required to compute backend file path.');
+  }
   const rel = getBackendRelativePath(manifest);
   if (!rel || rel === '.') {
     return path.join(projectFolder, ...segments);
@@ -100,7 +106,7 @@ export function getBackendFilePath(manifest, projectFolder, ...segments) {
 
 /**
  * Builds a frontend relative file path (e.g. "Frontend/src/..." or "src/...").
- * @param {object} manifest
+ * @param {object} [manifest]
  * @param {...string} segments
  */
 export function getFrontendFilePath(manifest, ...segments) {
