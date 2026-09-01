@@ -1,47 +1,78 @@
 import path from 'node:path';
 import { writeFile } from '../utils/filesystem.js';
 import { describeFrontend } from '../models/frontend.js';
+import { describeBackend } from '../models/backend.js';
 import { readPackageMeta } from '../cli/arguments.js';
 
 /**
  * @param {object} options
  */
 export async function writeGeneratedReadme(options) {
-  const pm = options.packageManager;
+  const pm = options.packageManager ?? 'npm';
   const installCmd = pm === 'yarn' ? 'yarn' : `${pm} install`;
   const devCmd = pm === 'yarn' ? 'yarn dev' : `${pm} run dev`;
-  const frontend = options.frontend;
+  const frontend = options.frontend ?? { enabled: false };
+  const backend = options.backend?.enabled || options.backend === true
+    ? (typeof options.backend === 'object' ? options.backend : { enabled: true })
+    : { enabled: false };
+
   const sections = [];
 
-  sections.push(`# ${options.displayName}`, '', `Generated with the full-stack starter CLI.`, '');
+  sections.push(`# ${options.displayName}`, '', `Generated with create-fullstack-app.`, '');
 
-  sections.push('## Structure', '');
-  if (options.backend) {
+  sections.push('## Project Architecture', '');
+  if (backend.enabled) {
     sections.push(
-      '- `API/` — ASP.NET Core host',
-      '- `Application/` — use cases, MediatR, validation, result types',
-      '- `Domain/` — entities and domain types',
-      '- `Infrastructure/` — EF Core, authentication stubs',
+      '### Backend (ASP.NET Core Web API)',
+      `- **Architecture**: Clean Architecture (${backend.architecture === 'services' ? 'Application Services' : 'CQRS + MediatR'})`,
+      `- **Data Access**: ${backend.orm === 'dapper' ? 'Dapper' : backend.orm === 'efcore-dapper' ? 'EF Core + Dapper' : 'Entity Framework Core'}`,
+      `- **Database**: ${backend.database === 'postgresql' ? 'PostgreSQL' : backend.database === 'sqlite' ? 'SQLite' : 'SQL Server'}`,
+      `- **Logging**: ${backend.logging === 'ilogger' ? 'Built-in ILogger' : 'Serilog'}`,
+      `- **Authentication**: ${backend.authentication === 'none' ? 'None' : backend.authentication === 'identity' ? 'ASP.NET Core Identity' : 'ASP.NET Core Identity + JWT'}`,
+      backend.realtime === 'signalr' ? '- **Real Time**: SignalR Hubs (`/hubs/app`)' : '',
+      backend.backgroundJobs === 'hangfire' ? '- **Background Jobs**: Hangfire Dashboard (`/hangfire`)' : '',
+      '',
+      'Folder structure:',
+      '- `API/` — ASP.NET Core host, controllers, middleware, hubs',
+      '- `Application/` — use cases, commands, queries, validation, result types',
+      '- `Domain/` — entities, domain events, common types',
+      '- `Infrastructure/` — persistence, database contexts/factories, authentication',
+      `- \`${options.pascalName}.slnx\` — solution file`,
+      '',
     );
   }
+
   if (frontend.enabled) {
-    sections.push(`- \`Client/\` — ${describeFrontend(frontend)} frontend`);
+    sections.push(
+      `### Frontend (${describeFrontend(frontend)})`,
+      `- **Language**: ${frontend.language === 'javascript' ? 'JavaScript' : 'TypeScript'}`,
+      `- **Styling**: ${frontend.styling === 'bootstrap' ? 'Bootstrap' : 'Tailwind CSS'}`,
+      `- **State**: ${frontend.state === 'zustand' ? 'Zustand' : frontend.state === 'none' ? 'None' : frontend.library === 'angular' ? 'NgRx' : 'Redux Toolkit'}`,
+      `- **HTTP Client**: ${frontend.httpClient === 'fetch' ? 'Fetch API' : frontend.library === 'angular' ? 'Angular HttpClient' : 'Axios'}`,
+      `- **Forms**: ${frontend.forms === 'none' ? 'None' : frontend.library === 'angular' ? 'Angular Reactive Forms' : 'React Hook Form + Zod'}`,
+      `- **Component System**: ${frontend.componentSystem === 'shadcn' ? 'shadcn/ui' : frontend.componentSystem === 'mui' ? 'Material UI' : frontend.componentSystem === 'antd' ? 'Ant Design' : 'None'}`,
+      `- **Layout Foundations**: Auth Layout (\`/login\`, \`/register\`, \`/forgot-password\`), Dashboard Layout (\`/dashboard\`), Website Layout (\`/\`)`,
+      frontend.realtime === 'signalr' ? '- **Real Time**: SignalR Client Connection Hook / Service' : '',
+      '',
+    );
   }
-  if (options.backend) {
-    sections.push(`- \`${options.pascalName}.slnx\` — solution file`);
-    sections.push('', 'There is no `Backend/` parent folder. The .NET projects live at the repository root.');
-  }
-  sections.push('');
 
   sections.push('## Requirements', '', '- Node.js 20+');
-  if (options.backend) {
-    sections.push('- .NET SDK', '- SQL Server (when using the default database provider)');
+  if (backend.enabled) {
+    sections.push(
+      '- .NET SDK 9.0+',
+      backend.database === 'postgresql'
+        ? '- PostgreSQL Server'
+        : backend.database === 'sqlite'
+          ? '- SQLite (embedded)'
+          : '- SQL Server (LocalDB, SQL Server Express, or Docker)',
+    );
   }
   sections.push('');
 
-  if (options.backend) {
+  if (backend.enabled) {
     sections.push(
-      '## Run the API',
+      '## Run the Backend API',
       '',
       '```bash',
       'dotnet restore',
@@ -49,23 +80,15 @@ export async function writeGeneratedReadme(options) {
       'dotnet run --project API',
       '```',
       '',
-      'The API listens on `http://localhost:5000` in the default launch profile.',
-      '',
-      '### CORS',
-      '',
-      'Allowed origins are configured in `API/appsettings.json` under `Cors:AllowedOrigins`.',
-      'Development defaults include:',
-      '',
-      '- Next.js: `http://localhost:3000`',
-      '- Vite: `http://localhost:5173`',
-      '- Angular: `http://localhost:4200`',
+      'The API listens on `http://localhost:5000` (Swagger docs available at `http://localhost:5000/swagger` in Development).',
+      'Health check endpoint is at `http://localhost:5000/health`.',
       '',
     );
   }
 
   if (frontend.enabled) {
     sections.push(
-      '## Run the client',
+      '## Run the Frontend Client',
       '',
       '```bash',
       'cd Client',
@@ -74,120 +97,13 @@ export async function writeGeneratedReadme(options) {
       '```',
       '',
     );
-
-    if (frontend.library === 'react' && frontend.framework === 'next') {
-      sections.push(
-        'Copy `Client/.env.example` to `Client/.env.local`.',
-        '',
-        '| Name | Purpose |',
-        '| --- | --- |',
-        '| `NEXT_PUBLIC_API_URL` | Browser Axios client |',
-        '| `API_INTERNAL_URL` | Server Components (`server-api.ts`) |',
-        '',
-        '`server-api.ts` uses `API_INTERNAL_URL` first, then `NEXT_PUBLIC_API_URL`.',
-        '',
-        'Public SEO pages may use Server Components and `server-api.ts`.',
-        'Do not use Redux async thunks for server rendering.',
-        'Interactive and dashboard state continues through Redux Toolkit.',
-        '',
-        '## Frontend architecture',
-        '',
-        'Feature code lives in `Client/src/modules/<feature>/`.',
-        '',
-        'Async thunks live **under the slice folder**:',
-        '',
-        '```text',
-        'src/modules/users/slices/thunks/',
-        '```',
-        '',
-        'Not:',
-        '',
-        '```text',
-        'src/modules/users/thunks/',
-        '```',
-        '',
-        'Data flow: Page → controller hook → `dispatch(asyncThunk)` → module service → `apiClient` → backend.',
-        '',
-        options.localization
-          ? 'Localization uses next-intl with a `locale` cookie (`en` | `ar`). There are no `/en` or `/ar` URL prefixes by default.'
-          : '',
-        '',
-      );
-    }
-
-    if (frontend.library === 'react' && frontend.framework === 'vite') {
-      sections.push(
-        'Copy `Client/.env.example` to `Client/.env`.',
-        '',
-        '| Name | Purpose |',
-        '| --- | --- |',
-        '| `VITE_API_URL` | Browser Axios client (`import.meta.env.VITE_API_URL`) |',
-        '',
-        'This is a client-side SPA. There is no `server-api.ts` and no Next.js Server Components.',
-        '',
-        '## Frontend architecture',
-        '',
-        'Routing uses React Router layouts for website, auth, and dashboard.',
-        '',
-        'Feature code lives in `Client/src/modules/<feature>/`.',
-        '',
-        'Async thunks live **under the slice folder**:',
-        '',
-        '```text',
-        'src/modules/users/slices/thunks/',
-        '```',
-        '',
-        'Not:',
-        '',
-        '```text',
-        'src/modules/users/thunks/',
-        '```',
-        '',
-        'Data flow: Page → controller hook → `dispatch(asyncThunk)` → module service → `apiClient` → backend.',
-        '',
-        options.localization
-          ? 'Localization uses i18next/react-i18next with a `locale` cookie (`en` | `ar`) and RTL/LTR document direction.'
-          : '',
-        '',
-      );
-    }
-
-    if (frontend.library === 'angular') {
-      sections.push(
-        'API base URL is configured in `Client/src/app/core/config/app-config.ts` (`apiUrl`).',
-        '',
-        'Typical Angular dev origin: `http://localhost:4200`.',
-        '',
-        '## Frontend architecture',
-        '',
-        'Angular uses standalone components, the Angular router, and NgRx.',
-        '',
-        'Feature state lives under:',
-        '',
-        '```text',
-        'src/app/features/<feature>/store/',
-        '  actions',
-        '  reducer',
-        '  effects',
-        '  selectors',
-        '```',
-        '',
-        'Angular does **not** use Redux Toolkit or async thunks.',
-        '',
-        'Data flow: Page → dispatch NgRx action → effect → feature service → HttpClient → backend.',
-        '',
-        'Toasts use a small `ToastService` plus `ToastHostComponent` (no Sonner).',
-        '',
-        options.localization
-          ? 'Localization uses a cookie-based `I18nService` with English and Arabic messages and RTL/LTR document direction. There are no `/en` or `/ar` URL prefixes by default.'
-          : '',
-        '',
-      );
-    }
   }
 
   const pkg = readPackageMeta();
-  sections.push('', `Generator version: ${pkg.version}`, '');
+  sections.push('---', `Generated with create-fullstack-app v${pkg.version}`, '');
 
-  await writeFile(path.join(options.targetDirectory, 'README.md'), sections.filter((line) => line !== undefined).join('\n'));
+  await writeFile(
+    path.join(options.targetDirectory, 'README.md'),
+    sections.filter((line) => line !== undefined).join('\n'),
+  );
 }

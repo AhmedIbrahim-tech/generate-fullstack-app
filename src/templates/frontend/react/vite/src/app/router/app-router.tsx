@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/app/layouts/DashboardLayout";
 import { WebsiteLayout } from "@/app/layouts/WebsiteLayout";
 import { LoginPage } from "@/app/pages/LoginPage";
 import { RegisterPage } from "@/app/pages/RegisterPage";
+import { ForgotPasswordPage } from "@/app/pages/ForgotPasswordPage";
 import { DashboardPage } from "@/app/pages/DashboardPage";
 import { HomePage } from "@/app/pages/HomePage";
 import {
@@ -21,6 +22,7 @@ export const appRouter = createBrowserRouter([
     children: [
       { path: "/login", element: <LoginPage /> },
       { path: "/register", element: <RegisterPage /> },
+      { path: "/forgot-password", element: <ForgotPasswordPage /> },
     ],
   },
   {

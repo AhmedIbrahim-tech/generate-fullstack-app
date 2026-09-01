@@ -52,6 +52,15 @@ export async function generateAngularFrontend(options) {
     cwd: clientDir,
     step: 'Install Tailwind for Angular',
   });
+
+  if (options.frontend?.realtime === 'signalr' || options.realtime === 'signalr') {
+    add(options.packageManager, ['@microsoft/signalr'], {
+      cwd: clientDir,
+      step: 'Install SignalR client for Angular',
+    });
+    await writeAngularSignalRService(clientDir);
+  }
+
   logger.success('Frontend dependencies installed');
 
   await copyTemplate(
@@ -69,18 +78,6 @@ export async function generateAngularFrontend(options) {
   await writeAngularAppConfig(clientDir);
   await ensureAngularStyles(clientDir);
   await removeAngularCliBoilerplate(clientDir);
-
-  if (!options.dashboard) {
-    await fs.rm(path.join(clientDir, 'src', 'app', 'layouts', 'dashboard-layout'), {
-      recursive: true,
-      force: true,
-    });
-    await fs.rm(path.join(clientDir, 'src', 'app', 'features', 'dashboard'), {
-      recursive: true,
-      force: true,
-    });
-    await writeAngularRoutesWithoutDashboard(clientDir);
-  }
 
   logger.success('Angular starter architecture generated');
 }
@@ -165,37 +162,47 @@ async function removeAngularCliBoilerplate(clientDir) {
   }
 }
 
-async function writeAngularRoutesWithoutDashboard(clientDir) {
-  await writeFile(
-    path.join(clientDir, 'src', 'app', 'app.routes.ts'),
-    `import { Routes } from "@angular/router";
-import { AuthLayoutComponent } from "./layouts/auth-layout/auth-layout.component";
-import { WebsiteLayoutComponent } from "./layouts/website-layout/website-layout.component";
-import { HomePageComponent } from "./features/home/home.page";
-import { LoginPageComponent } from "./features/auth/login.page";
-import { RegisterPageComponent } from "./features/auth/register.page";
+async function writeAngularSignalRService(clientDir) {
+  const content = `import { Injectable } from '@angular/core';
+import * as signalR from '@microsoft/signalr';
+import { BehaviorSubject, Observable } from 'rxjs';
 
-export const routes: Routes = [
-  {
-    path: "",
-    component: WebsiteLayoutComponent,
-    children: [
-      { path: "", component: HomePageComponent },
-      {
-        path: "examples",
-        loadChildren: () => import("./features/example/example.routes").then((m) => m.exampleRoutes),
-      },
-    ],
-  },
-  {
-    path: "",
-    component: AuthLayoutComponent,
-    children: [
-      { path: "login", component: LoginPageComponent },
-      { path: "register", component: RegisterPageComponent },
-    ],
-  },
-];
-`,
+@Injectable({
+  providedIn: 'root',
+})
+export class SignalRService {
+  private hubConnection: signalR.HubConnection | null = null;
+  private isConnectedSubject = new BehaviorSubject<boolean>(false);
+  public isConnected$: Observable<boolean> = this.isConnectedSubject.asObservable();
+
+  public startConnection(hubUrl: string = '/hubs/app'): void {
+    this.hubConnection = new signalR.HubConnectionBuilder()
+      .withUrl(hubUrl, {
+        accessTokenFactory: () => localStorage.getItem('access_token') ?? '',
+      })
+      .withAutomaticReconnect()
+      .build();
+
+    this.hubConnection
+      .start()
+      .then(() => {
+        this.isConnectedSubject.next(true);
+      })
+      .catch((err) => {
+        console.warn('SignalR connection error:', err);
+      });
+  }
+
+  public stopConnection(): void {
+    if (this.hubConnection) {
+      this.hubConnection.stop();
+      this.isConnectedSubject.next(false);
+    }
+  }
+}
+`;
+  await writeFile(
+    path.join(clientDir, 'src', 'app', 'core', 'services', 'signalr.service.ts'),
+    content,
   );
 }

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { confirm } from '@inquirer/prompts';
 import { copyTemplate, ensureDir, isNonEmptyDirectory, templatesRoot } from '../utils/filesystem.js';
 import { GenerationError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
@@ -9,7 +10,9 @@ import { generateFrontend } from './frontend/frontend.generator.js';
 import { writeGeneratedReadme } from './readme.generator.js';
 import { writeGenerationManifest } from './manifest.generator.js';
 import { describeFrontend } from '../models/frontend.js';
+import { describeBackend } from '../models/backend.js';
 import { installEnabledModules } from '../module-generator/module.generator.js';
+import { saveUserPreferences } from '../utils/user-preferences.js';
 
 /**
  * @param {object} options
@@ -43,7 +46,8 @@ export async function generateProject(options) {
   await copyTemplate(path.join(templatesRoot(), 'root'), targetDirectory, replacements);
   await writeGeneratedReadme(generationOptions);
 
-  if (options.backend) {
+  const hasBackend = Boolean(options.backend?.enabled || options.backend === true);
+  if (hasBackend) {
     await generateBackend(generationOptions);
     await generateSolution(generationOptions);
     runCommand('dotnet', ['restore'], {
@@ -52,14 +56,14 @@ export async function generateProject(options) {
     });
   }
 
-  if (options.frontend.enabled) {
+  if (options.frontend?.enabled) {
     await generateFrontend(generationOptions);
   }
 
   await writeGenerationManifest(generationOptions);
 
   const modulesToInstall = resolveModulesToInstall(options);
-  if (modulesToInstall.length > 0 && options.backend) {
+  if (modulesToInstall.length > 0 && hasBackend) {
     logger.info(`Installing V4 modules: ${modulesToInstall.join(', ')}`);
     await installEnabledModules({
       projectRoot: targetDirectory,
@@ -72,8 +76,67 @@ export async function generateProject(options) {
 
   logger.success('Starter architecture generated');
   logger.info(`Created ${options.displayName} at ${targetDirectory}`);
-  logger.info(`Frontend: ${describeFrontend(options.frontend)}`);
+  if (hasBackend) {
+    logger.info(`Backend: ${describeBackend(options.backend)}`);
+  }
+  if (options.frontend?.enabled) {
+    logger.info(`Frontend: ${describeFrontend(options.frontend)}`);
+  }
   logger.info('Generated files were left in place. Inspect them before running the apps.');
+
+  // Post-generation preference saving prompt
+  await maybeSaveUserPreferences(options);
+}
+
+/**
+ * @param {object} options
+ */
+async function maybeSaveUserPreferences(options) {
+  let shouldSave = options.saveDefaults;
+
+  if (shouldSave === undefined && !options.yes) {
+    try {
+      shouldSave = await confirm({
+        message: 'Save these choices as my default?',
+        default: false,
+      });
+    } catch {
+      shouldSave = false;
+    }
+  }
+
+  if (shouldSave) {
+    const prefData = {
+      mode: options.mode,
+      backend: options.backend?.enabled ? {
+        architecture: options.backend.architecture,
+        mapping: options.backend.mapping,
+        orm: options.backend.orm,
+        database: options.backend.database,
+        logging: options.backend.logging,
+        backgroundJobs: options.backend.backgroundJobs,
+        realtime: options.backend.realtime,
+        authentication: options.backend.authentication,
+      } : null,
+      frontend: options.frontend?.enabled ? {
+        library: options.frontend.library,
+        framework: options.frontend.framework,
+        language: options.frontend.language,
+        styling: options.frontend.styling,
+        state: options.frontend.state,
+        httpClient: options.frontend.httpClient,
+        forms: options.frontend.forms,
+        componentSystem: options.frontend.componentSystem,
+        localization: options.frontend.localization,
+        realtime: options.frontend.realtime,
+      } : null,
+      packageManager: options.packageManager,
+    };
+
+    if (saveUserPreferences(prefData)) {
+      logger.success('Saved developer preferences globally in ~/.create-fullstack-app/config.json');
+    }
+  }
 }
 
 /**

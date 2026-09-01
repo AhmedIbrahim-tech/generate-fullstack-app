@@ -34,7 +34,7 @@ export async function generateFeature(resolvedOptions) {
   const manifest = await readManifest(projectRoot);
   const projectName = path.basename(projectRoot);
   const frontendStrategy = resolveFrontendStrategy(manifest);
-  const hasBackend = Boolean(manifest.backend);
+  const hasBackend = Boolean(typeof manifest.backend === 'object' ? manifest.backend?.enabled : manifest.backend);
   const hasFrontend = Boolean(frontendStrategy.library);
   const hasFileStorage = await pathExists(
     path.join(projectRoot, 'Domain', 'Entities', 'StoredFile.cs'),

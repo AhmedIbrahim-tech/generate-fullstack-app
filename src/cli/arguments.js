@@ -19,7 +19,18 @@ export function getBinCommandName() {
 const BOOLEAN_FLAGS = {
   '--backend': ['backend', true],
   '--no-backend': ['backend', false],
+  '--fullstack': ['mode', 'fullstack'],
+  '--backend-only': ['mode', 'backend-only'],
+  '--frontend-only': ['mode', 'frontend-only'],
+  '--recommended': ['setupMode', 'recommended'],
+  '--customize': ['setupMode', 'customize'],
+  '--custom': ['setupMode', 'customize'],
+  '--use-saved-preferences': ['useSavedPreferences', true],
+  '--save-defaults': ['saveDefaults', true],
+  '--no-save-defaults': ['saveDefaults', false],
   '--no-frontend': ['frontendEnabled', false],
+  '--signalr': ['realtime', 'signalr'],
+  '--no-signalr': ['realtime', 'none'],
   '--sql-server': ['sqlServer', true],
   '--no-sql-server': ['sqlServer', false],
   '--auth': ['auth', true],
@@ -52,11 +63,29 @@ export function parseArguments(argv) {
     projectName: undefined,
     output: process.cwd(),
     yes: false,
+    mode: undefined, // 'fullstack' | 'backend-only' | 'frontend-only'
+    setupMode: undefined, // 'recommended' | 'customize'
+    useSavedPreferences: undefined,
+    saveDefaults: undefined,
     packageManager: undefined,
     backend: undefined,
+    architecture: undefined,
+    mapping: undefined,
+    orm: undefined,
+    database: undefined,
+    logging: undefined,
+    backgroundJobs: undefined,
+    realtime: undefined,
+    authMode: undefined,
     frontendEnabled: undefined,
     frontendLibrary: undefined,
     reactFramework: undefined,
+    language: undefined,
+    styling: undefined,
+    state: undefined,
+    httpClient: undefined,
+    forms: undefined,
+    componentSystem: undefined,
     sqlServer: undefined,
     auth: undefined,
     localization: undefined,
@@ -106,6 +135,82 @@ export function parseArguments(argv) {
       continue;
     }
 
+    if (arg === '--mode' || arg === '--target' || arg === '--project-type') {
+      const value = requireValue(args, index, arg).toLowerCase();
+      if (!['fullstack', 'backend-only', 'frontend-only'].includes(value)) {
+        throw new Error(`Unsupported mode "${value}". Use fullstack, backend-only, or frontend-only.`);
+      }
+      options.mode = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--setup-mode') {
+      const value = requireValue(args, index, '--setup-mode').toLowerCase();
+      if (!['recommended', 'customize'].includes(value)) {
+        throw new Error(`Unsupported setup mode "${value}". Use recommended or customize.`);
+      }
+      options.setupMode = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--architecture') {
+      const value = requireValue(args, index, '--architecture').toLowerCase();
+      options.architecture = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--mapping') {
+      const value = requireValue(args, index, '--mapping').toLowerCase();
+      options.mapping = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--orm' || arg === '--data-access') {
+      const value = requireValue(args, index, arg).toLowerCase();
+      options.orm = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--database' || arg === '--db') {
+      const value = requireValue(args, index, arg).toLowerCase();
+      options.database = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--logging') {
+      const value = requireValue(args, index, '--logging').toLowerCase();
+      options.logging = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--background-jobs' || arg === '--jobs') {
+      const value = requireValue(args, index, arg).toLowerCase();
+      options.backgroundJobs = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--realtime' || arg === '--real-time') {
+      const value = requireValue(args, index, arg).toLowerCase();
+      options.realtime = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--auth-mode') {
+      const value = requireValue(args, index, '--auth-mode').toLowerCase();
+      options.authMode = value;
+      index += 1;
+      continue;
+    }
+
     if (arg === '--frontend') {
       const value = requireValue(args, index, '--frontend');
       if (!isFrontendLibrary(value)) {
@@ -127,6 +232,48 @@ export function parseArguments(argv) {
       continue;
     }
 
+    if (arg === '--language' || arg === '--lang') {
+      const value = requireValue(args, index, arg).toLowerCase();
+      options.language = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--styling' || arg === '--style') {
+      const value = requireValue(args, index, arg).toLowerCase();
+      options.styling = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--state') {
+      const value = requireValue(args, index, '--state').toLowerCase();
+      options.state = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--http-client' || arg === '--http') {
+      const value = requireValue(args, index, arg).toLowerCase();
+      options.httpClient = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--forms') {
+      const value = requireValue(args, index, '--forms').toLowerCase();
+      options.forms = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--component-system' || arg === '--components') {
+      const value = requireValue(args, index, arg).toLowerCase();
+      options.componentSystem = value;
+      index += 1;
+      continue;
+    }
+
     if (arg in BOOLEAN_FLAGS) {
       const [key, value] = BOOLEAN_FLAGS[arg];
       options[key] = value;
@@ -142,6 +289,18 @@ export function parseArguments(argv) {
     }
 
     options.projectName = arg;
+  }
+
+  // Derive backend/frontend enablement from mode if specified
+  if (options.mode === 'fullstack') {
+    options.backend = options.backend ?? true;
+    options.frontendEnabled = options.frontendEnabled ?? true;
+  } else if (options.mode === 'backend-only') {
+    options.backend = true;
+    options.frontendEnabled = false;
+  } else if (options.mode === 'frontend-only') {
+    options.backend = false;
+    options.frontendEnabled = true;
   }
 
   return options;
@@ -173,37 +332,51 @@ Usage:
   ${bin} [project-name] [options]
   node ./bin/${bin}.js [project-name] [options]
 
-Options:
+Modes:
+  --fullstack                        Create Full Stack project (Backend + Frontend)
+  --backend-only                     Create Backend only project
+  --frontend-only                    Create Frontend only project
+
+Setup & Preferences:
+  --setup-mode recommended|customize Choose between recommended stack or custom choices
+  --recommended                      Use recommended production-ready stack defaults
+  --customize                        Customize architectural decisions
+  --use-saved-preferences            Use previously saved global developer preferences
+  --save-defaults                    Save choices as global developer defaults
+
+Backend Options:
+  --backend / --no-backend           Include ASP.NET Core Clean Architecture backend
+  --architecture cqrs-mediatr|services CQRS + MediatR or Application Services
+  --mapping manual|automapper        Manual mapping extensions or AutoMapper
+  --orm efcore|dapper|efcore-dapper  Entity Framework Core, Dapper, or both
+  --database sqlserver|postgresql|sqlite SQL Server, PostgreSQL, or SQLite
+  --logging serilog|ilogger          Serilog or built-in ILogger
+  --background-jobs none|hangfire    Hangfire background processing
+  --realtime none|signalr            SignalR real-time hubs & client
+  --auth-mode identity-jwt|identity|none Authentication mode (Identity + JWT default)
+
+Frontend Options:
+  --frontend react|angular           Frontend library
+  --no-frontend                      Skip frontend generation
+  --react-framework next|vite        Next.js (App Router) or Vite SPA
+  --language typescript|javascript   TypeScript or JavaScript
+  --styling tailwind|bootstrap       Tailwind CSS or Bootstrap
+  --state redux|zustand|ngrx|none    Redux Toolkit, Zustand, NgRx, or None
+  --http-client axios|fetch          Axios or Fetch
+  --forms react-hook-form-zod|none   React Hook Form + Zod validation
+  --component-system shadcn|mui|antd|none shadcn/ui, MUI, Ant Design, or None
+
+General Options:
   -h, --help                         Show help
   -v, --version                      Show version
-  -y, --yes                          Use defaults without prompting (skips summary confirm)
+  -y, --yes                          Use defaults without prompting
   -o, --output <dir>                 Parent directory for the new project (default: cwd)
   -p, --package-manager <name>       npm | yarn | pnpm (default: npm)
 
-  --backend / --no-backend           Include ASP.NET Core backend (default: yes)
-  --frontend react|angular           Enable a frontend library
-  --no-frontend                      Skip frontend generation
-  --react-framework next|vite        Required with --frontend react in non-interactive mode
-
-  --sql-server / --no-sql-server     SQL Server provider (default: yes)
-  --auth / --no-auth                 V4 Authentication module (Identity + JWT + refresh) (default: no with --yes)
-  --users / --no-users               User management module (requires auth)
-  --permissions / --no-permissions   Permissions/policies module (requires auth)
-  --audit / --no-audit               Audit trail module
-  --notifications / --no-notifications In-app notifications (requires auth)
-  --domain-localization              Domain entity localization module
-  --rich-text                        Structured rich-text (Tiptap) module
-  --localization / --no-localization UI localization foundation (default: yes)
-  --dashboard / --no-dashboard       Dashboard foundation module (default: yes)
-
-Non-interactive examples:
-  ${bin} MyApp --yes --frontend react --react-framework next
-  ${bin} MyApp --yes --frontend react --react-framework vite --auth --users --permissions --audit --notifications --dashboard
-  ${bin} MyApp --yes --frontend angular --auth --permissions --users
-  ${bin} MyApp --yes --no-frontend
-
---yes with no frontend flags defaults to React + Next.js.
-If you pass --frontend react, you must also pass --react-framework.
+Examples:
+  ${bin} MyApp --yes --fullstack
+  ${bin} MyApi --yes --backend-only --database postgresql --orm dapper --realtime signalr
+  ${bin} MyUi --yes --frontend-only --frontend react --react-framework vite --state zustand
 `.trim();
 
   process.stdout.write(`${text}\n`);
@@ -216,17 +389,34 @@ export function printVersion() {
 
 export const DEFAULT_OPTIONS = {
   packageManager: 'npm',
+  mode: 'fullstack',
+  setupMode: 'recommended',
   backend: true,
   frontendEnabled: true,
+  architecture: 'cqrs-mediatr',
+  mapping: 'manual',
+  orm: 'efcore',
+  database: 'sqlserver',
+  logging: 'serilog',
+  backgroundJobs: 'none',
+  realtime: 'none',
+  authMode: 'identity-jwt',
+  frontendLibrary: 'react',
+  reactFramework: 'next',
+  language: 'typescript',
+  styling: 'tailwind',
+  state: 'redux',
+  httpClient: 'axios',
+  forms: 'react-hook-form-zod',
+  componentSystem: 'shadcn',
+  localization: true,
   sqlServer: true,
-  // V4 modules are opt-in even with --yes unless flags are passed.
-  auth: false,
+  auth: true,
   users: false,
   permissions: false,
   audit: false,
   notifications: false,
   domainLocalization: false,
   richText: false,
-  localization: true,
   dashboard: true,
 };

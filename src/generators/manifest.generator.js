@@ -8,6 +8,11 @@ import { buildDefaultModulesBlock } from '../module-generator/module.registry.js
  */
 export async function writeGenerationManifest(options) {
   const pkg = readPackageMeta();
+  const backend = options.backend?.enabled || options.backend === true
+    ? (typeof options.backend === 'object' ? options.backend : { enabled: true })
+    : { enabled: false };
+  const frontend = options.frontend?.enabled ? options.frontend : { enabled: false };
+
   const modules = buildDefaultModulesBlock({
     auth: Boolean(options.modules?.auth ?? options.auth),
     userManagement: options.modules?.users,
@@ -31,15 +36,53 @@ export async function writeGenerationManifest(options) {
   const manifest = {
     generatorVersion: pkg.version,
     projectName: options.pascalName,
-    backend: options.backend ? 'aspnet-core' : null,
-    frontend: options.frontend.enabled
+    backend: backend.enabled
       ? {
-          library: options.frontend.library,
-          framework: options.frontend.framework,
+          enabled: true,
+          architecture: backend.architecture ?? 'cqrs-mediatr',
+          orm: backend.orm ?? 'efcore',
+          database: backend.database ?? 'sqlserver',
+          mapping: backend.mapping ?? 'manual',
+          authentication: backend.authentication ?? 'identity-jwt',
+          realtime: backend.realtime ?? 'none',
+          logging: backend.logging ?? 'serilog',
+          backgroundJobs: backend.backgroundJobs ?? 'none',
         }
       : {
+          enabled: false,
+          architecture: null,
+          orm: null,
+          database: null,
+          mapping: null,
+          authentication: null,
+          realtime: null,
+        },
+    frontend: frontend.enabled
+      ? {
+          enabled: true,
+          library: frontend.library,
+          framework: frontend.framework,
+          language: frontend.language ?? 'typescript',
+          styling: frontend.styling ?? 'tailwind',
+          state: frontend.state ?? (frontend.library === 'angular' ? 'ngrx' : 'redux'),
+          httpClient: frontend.httpClient ?? (frontend.library === 'angular' ? 'httpclient' : 'axios'),
+          forms: frontend.forms ?? (frontend.library === 'angular' ? 'reactive-forms' : 'react-hook-form-zod'),
+          componentSystem: frontend.componentSystem ?? (frontend.styling === 'tailwind' && frontend.library === 'react' ? 'shadcn' : 'none'),
+          localization: Boolean(frontend.localization),
+          realtime: frontend.realtime ?? 'none',
+        }
+      : {
+          enabled: false,
           library: null,
           framework: null,
+          language: null,
+          styling: null,
+          state: null,
+          httpClient: null,
+          forms: null,
+          componentSystem: null,
+          localization: false,
+          realtime: null,
         },
     packageManager: options.packageManager,
     modules: initialModules,

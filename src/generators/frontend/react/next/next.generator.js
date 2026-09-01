@@ -12,71 +12,80 @@ import { installReactCommonPackages, overlayReactCommon } from '../react-common.
  */
 export async function generateNextFrontend(options) {
   const packageManagerFlag = getCreateNextAppPackageManagerFlag(options.packageManager);
+  const frontend = options.frontend ?? {};
+  const isTs = frontend.language !== 'javascript';
+  const isTailwind = frontend.styling !== 'bootstrap';
 
-  runCommand(
-    'npx',
-    [
-      '--yes',
-      'create-next-app@latest',
-      CLIENT_STAGING_NAME,
-      '--ts',
-      '--tailwind',
-      '--eslint',
-      '--app',
-      '--src-dir',
-      '--import-alias',
-      '@/*',
-      '--empty',
-      '--yes',
-      '--disable-git',
-      packageManagerFlag,
-    ],
-    {
-      cwd: options.targetDirectory,
-      step: 'Create Next.js client',
-      env: {
-        ...process.env,
-        CI: '1',
-        npm_config_user_agent: packageManagerUserAgent(options.packageManager),
-      },
+  const createNextAppArgs = [
+    '--yes',
+    'create-next-app@latest',
+    CLIENT_STAGING_NAME,
+    isTs ? '--ts' : '--js',
+    isTailwind ? '--tailwind' : '--no-tailwind',
+    '--eslint',
+    '--app',
+    '--src-dir',
+    '--import-alias',
+    '@/*',
+    '--empty',
+    '--yes',
+    '--disable-git',
+    packageManagerFlag,
+  ];
+
+  runCommand('npx', createNextAppArgs, {
+    cwd: options.targetDirectory,
+    step: 'Create Next.js client',
+    env: {
+      ...process.env,
+      CI: '1',
+      npm_config_user_agent: packageManagerUserAgent(options.packageManager),
     },
-  );
+  });
 
   const clientDir = await promoteStagingClient(options.targetDirectory, options.folderName);
   logger.success('Next.js client created');
 
-  installReactCommonPackages({ clientDir, packageManager: options.packageManager });
-  if (options.localization) {
+  installReactCommonPackages({ clientDir, packageManager: options.packageManager, frontend });
+
+  if (frontend.localization ?? options.localization) {
     add(options.packageManager, ['next-intl'], {
       cwd: clientDir,
       step: 'Install next-intl',
     });
   }
+
   logger.success('Frontend dependencies installed');
 
   await overlayReactCommon({
     clientDir,
     packageManager: options.packageManager,
     replacements: options.replacements,
+    frontend,
   });
+
   await copyTemplate(
     path.join(templatesRoot(), 'frontend', 'react', 'next'),
     clientDir,
     options.replacements,
   );
 
-  await writeFileIfMissing(path.join(clientDir, 'src', 'app', 'globals.css'), '@import "tailwindcss";\n');
+  if (isTailwind) {
+    await writeFileIfMissing(path.join(clientDir, 'src', 'app', 'globals.css'), '@import "tailwindcss";\n');
+  } else {
+    // Bootstrap styling import
+    await writeFile(
+      path.join(clientDir, 'src', 'app', 'globals.css'),
+      '@import "bootstrap/dist/css/bootstrap.min.css";\n\nbody { margin: 0; padding: 0; }\n',
+    );
+  }
 
   const defaultPage = path.join(clientDir, 'src', 'app', 'page.tsx');
   if (await pathExists(defaultPage)) {
     await fs.unlink(defaultPage);
   }
 
-  if (!options.dashboard) {
-    await fs.rm(path.join(clientDir, 'src', 'app', '(dashboard)'), { recursive: true, force: true });
-  }
-
-  if (options.localization) {
+  if (frontend.localization ?? options.localization) {
     await writeNextIntlConfig(clientDir);
   } else {
     await fs.rm(path.join(clientDir, 'src', 'i18n'), { recursive: true, force: true });
@@ -145,9 +154,13 @@ async function writePlainHomePage(clientDir, replacements) {
     path.join(clientDir, 'src', 'app', '(website)', 'page.tsx'),
     `export default function HomePage() {
   return (
-    <main>
-      <h1>${replacements.__DISPLAY_NAME__}</h1>
-      <p>Full-stack starter for web applications.</p>
+    <main className="mx-auto flex min-h-[calc(100vh-160px)] max-w-4xl flex-col items-center justify-center gap-6 px-6 py-16 text-center">
+      <h1 className="text-4xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-100 sm:text-5xl">
+        ${replacements.__DISPLAY_NAME__}
+      </h1>
+      <p className="max-w-xl text-lg text-zinc-600 dark:text-zinc-400">
+        Clean, scalable full-stack application built with production-ready architecture.
+      </p>
     </main>
   );
 }

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { runCommand } from '../utils/command.js';
-import { copyTemplate, removeFilesMatching, templatesRoot, upsertCsprojProperties } from '../utils/filesystem.js';
+import { copyTemplate, removeFilesMatching, templatesRoot, upsertCsprojProperties, writeFile } from '../utils/filesystem.js';
 import { assertDotnetAvailable, detectTargetFramework } from '../utils/dotnet.js';
 import { logger } from '../utils/logger.js';
 
@@ -12,11 +12,32 @@ const PROJECTS = [
 ];
 
 /**
- * @param {{ targetDirectory: string, pascalName: string, replacements: Record<string, string>, sqlServer: boolean, auth: boolean }} options
+ * @param {object} options
  */
 export async function generateBackend(options) {
   assertDotnetAvailable();
   const targetFramework = detectTargetFramework();
+  const backend = typeof options.backend === 'object' ? options.backend : {};
+
+  const architecture = backend.architecture ?? options.architecture ?? 'cqrs-mediatr';
+  const mapping = backend.mapping ?? options.mapping ?? 'manual';
+  const orm = backend.orm ?? options.orm ?? 'efcore';
+  const database = backend.database ?? options.database ?? (options.sqlServer === false ? 'sqlite' : 'sqlserver');
+  const logging = backend.logging ?? options.logging ?? 'serilog';
+  const backgroundJobs = backend.backgroundJobs ?? options.backgroundJobs ?? 'none';
+  const realtime = backend.realtime ?? options.realtime ?? 'none';
+  const authMode = backend.authentication ?? options.authMode ?? (options.auth ? 'identity-jwt' : 'none');
+
+  const backendConfig = {
+    architecture,
+    mapping,
+    orm,
+    database,
+    logging,
+    backgroundJobs,
+    realtime,
+    authMode,
+  };
 
   for (const project of PROJECTS) {
     const args = [
@@ -56,8 +77,8 @@ export async function generateBackend(options) {
   }
 
   addProjectReferences(options.targetDirectory);
-  addBackendPackages(options);
-  await overlayBackendTemplates(options);
+  addBackendPackages(options.targetDirectory, backendConfig);
+  await overlayBackendTemplates(options, backendConfig);
 }
 
 /**
@@ -96,39 +117,92 @@ function addProjectReferences(cwd) {
 }
 
 /**
- * @param {{ targetDirectory: string, sqlServer: boolean, auth: boolean }} options
+ * @param {string} cwd
+ * @param {object} config
  */
-function addBackendPackages(options) {
-  const cwd = options.targetDirectory;
-
-  addPackages(cwd, path.join('Application', 'Application.csproj'), [
-    'MediatR',
+function addBackendPackages(cwd, config) {
+  // 1. Application Layer Packages
+  const applicationPackages = [
     'FluentValidation',
     'FluentValidation.DependencyInjectionExtensions',
-    'Microsoft.EntityFrameworkCore',
     'Microsoft.Extensions.Logging.Abstractions',
     'Microsoft.Extensions.DependencyInjection.Abstractions',
-  ]);
+  ];
 
+  if (config.architecture === 'cqrs-mediatr') {
+    applicationPackages.push('MediatR');
+  }
+
+  if (config.mapping === 'automapper') {
+    applicationPackages.push('AutoMapper');
+  }
+
+  if (config.orm === 'efcore' || config.orm === 'efcore-dapper') {
+    applicationPackages.push('Microsoft.EntityFrameworkCore');
+  }
+
+  addPackages(cwd, path.join('Application', 'Application.csproj'), applicationPackages);
+
+  // 2. Infrastructure Layer Packages
   const infrastructurePackages = [
-    'Microsoft.EntityFrameworkCore.Design',
     'Microsoft.Extensions.Configuration.Abstractions',
     'Microsoft.Extensions.DependencyInjection.Abstractions',
   ];
 
-  if (options.sqlServer) {
-    infrastructurePackages.push('Microsoft.EntityFrameworkCore.SqlServer');
+  if (config.orm === 'efcore' || config.orm === 'efcore-dapper') {
+    infrastructurePackages.push('Microsoft.EntityFrameworkCore.Design');
+
+    if (config.database === 'sqlserver') {
+      infrastructurePackages.push('Microsoft.EntityFrameworkCore.SqlServer');
+    } else if (config.database === 'postgresql') {
+      infrastructurePackages.push('Npgsql.EntityFrameworkCore.PostgreSQL');
+    } else if (config.database === 'sqlite') {
+      infrastructurePackages.push('Microsoft.EntityFrameworkCore.Sqlite');
+    }
   }
 
-  if (options.auth) {
+  if (config.orm === 'dapper' || config.orm === 'efcore-dapper') {
+    infrastructurePackages.push('Dapper');
+
+    if (config.database === 'sqlserver') {
+      infrastructurePackages.push('Microsoft.Data.SqlClient');
+    } else if (config.database === 'postgresql') {
+      infrastructurePackages.push('Npgsql');
+    } else if (config.database === 'sqlite') {
+      infrastructurePackages.push('Microsoft.Data.Sqlite');
+    }
+  }
+
+  if (config.authMode !== 'none') {
     infrastructurePackages.push('Microsoft.AspNetCore.Identity.EntityFrameworkCore');
+  }
+
+  if (config.backgroundJobs === 'hangfire') {
+    infrastructurePackages.push('Hangfire.Core', 'Hangfire.AspNetCore');
+    if (config.database === 'sqlserver') {
+      infrastructurePackages.push('Hangfire.SqlServer');
+    } else if (config.database === 'postgresql') {
+      infrastructurePackages.push('Hangfire.PostgreSql');
+    } else {
+      infrastructurePackages.push('Hangfire.MemoryStorage');
+    }
   }
 
   addPackages(cwd, path.join('Infrastructure', 'Infrastructure.csproj'), infrastructurePackages);
 
-  const apiPackages = ['Serilog.AspNetCore', 'Swashbuckle.AspNetCore'];
-  if (options.auth) {
-    apiPackages.push('Microsoft.AspNetCore.Authentication.JwtBearer');
+  // 3. API Layer Packages
+  const apiPackages = ['Swashbuckle.AspNetCore'];
+
+  if (config.logging === 'serilog') {
+    apiPackages.push('Serilog.AspNetCore');
+  }
+
+  if (config.authMode === 'identity-jwt') {
+    apiPackages.push('Microsoft.AspNetCore.Authentication.JwtBearer', 'System.IdentityModel.Tokens.Jwt');
+  }
+
+  if (config.backgroundJobs === 'hangfire') {
+    apiPackages.push('Hangfire.AspNetCore');
   }
 
   addPackages(cwd, path.join('API', 'API.csproj'), apiPackages);
@@ -149,28 +223,425 @@ function addPackages(cwd, csproj, packages) {
 }
 
 /**
- * @param {{ targetDirectory: string, replacements: Record<string, string>, sqlServer: boolean, auth: boolean }} options
+ * @param {object} options
+ * @param {object} config
  */
-async function overlayBackendTemplates(options) {
+async function overlayBackendTemplates(options, config) {
+  const targetDir = options.targetDirectory;
+  const pascalName = options.pascalName;
+
+  // Connection strings based on database
+  let connectionString = `Server=localhost;Database=${pascalName};Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=True`;
+  if (config.database === 'sqlserver') {
+    connectionString = `Server=(localdb)\\\\mssqllocaldb;Database=${pascalName}Db;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=True`;
+  } else if (config.database === 'postgresql') {
+    connectionString = `Host=localhost;Port=5432;Database=${pascalName}Db;Username=postgres;Password=postgres`;
+  } else if (config.database === 'sqlite') {
+    connectionString = `Data Source=${pascalName}.db`;
+  }
+
   const replacements = {
     ...options.replacements,
-    __SQL_SERVER_REGISTRATION__: options.sqlServer
-      ? `        var connectionString = configuration.GetConnectionString("DefaultConnection")
+    __CONNECTION_STRING__: connectionString,
+  };
+
+  await copyTemplate(path.join(templatesRoot(), 'backend'), targetDir, replacements);
+
+  // Write tailored appsettings.json
+  await writeAppSettings(targetDir, pascalName, connectionString, config);
+
+  // Write tailored Infrastructure/DependencyInjection.cs
+  await writeInfrastructureDi(targetDir, pascalName, config);
+
+  // Write tailored Application/DependencyInjection.cs
+  await writeApplicationDi(targetDir, pascalName, config);
+
+  // Write tailored API/Program.cs
+  await writeProgramCs(targetDir, pascalName, config);
+
+  // If Dapper is selected, write IDbConnectionFactory
+  if (config.orm === 'dapper' || config.orm === 'efcore-dapper') {
+    await writeDapperConnectionFactory(targetDir, pascalName, config);
+  }
+
+  // If SignalR is selected, write AppHub
+  if (config.realtime === 'signalr') {
+    await writeSignalRHub(targetDir, pascalName);
+  }
+}
+
+/**
+ * @param {string} targetDir
+ * @param {string} pascalName
+ * @param {string} connectionString
+ * @param {object} config
+ */
+async function writeAppSettings(targetDir, pascalName, connectionString, config) {
+  const appSettings = {
+    ConnectionStrings: {
+      DefaultConnection: connectionString.replace(/\\\\/g, '\\'),
+    },
+    Cors: {
+      AllowedOrigins: [
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'http://localhost:4200',
+      ],
+    },
+    AllowedHosts: '*',
+  };
+
+  if (config.logging === 'serilog') {
+    appSettings.Serilog = {
+      MinimumLevel: {
+        Default: 'Information',
+        Override: {
+          Microsoft: 'Warning',
+          'Microsoft.AspNetCore': 'Warning',
+        },
+      },
+    };
+  }
+
+  if (config.authMode !== 'none') {
+    appSettings.Auth = {
+      SeedAdmin: {
+        Enabled: false,
+        Email: 'admin@example.com',
+        Password: '',
+      },
+    };
+  }
+
+  await writeFile(
+    path.join(targetDir, 'API', 'appsettings.json'),
+    `${JSON.stringify(appSettings, null, 2)}\n`,
+  );
+
+  const devSettings = {
+    ConnectionStrings: {
+      DefaultConnection: connectionString.replace(/\\\\/g, '\\'),
+    },
+  };
+
+  if (config.logging === 'serilog') {
+    devSettings.Serilog = {
+      MinimumLevel: {
+        Default: 'Debug',
+        Override: {
+          Microsoft: 'Information',
+          'Microsoft.AspNetCore': 'Information',
+        },
+      },
+    };
+  }
+
+  await writeFile(
+    path.join(targetDir, 'API', 'appsettings.Development.json'),
+    `${JSON.stringify(devSettings, null, 2)}\n`,
+  );
+}
+
+/**
+ * @param {string} targetDir
+ * @param {string} pascalName
+ * @param {object} config
+ */
+async function writeInfrastructureDi(targetDir, pascalName, config) {
+  let dbRegistration = '';
+  let usings = ['using Microsoft.Extensions.Configuration;', 'using Microsoft.Extensions.DependencyInjection;'];
+
+  if (config.orm === 'efcore' || config.orm === 'efcore-dapper') {
+    usings.push('using Microsoft.EntityFrameworkCore;');
+    usings.push(`using ${pascalName}.Application.Abstractions.Persistence;`);
+    usings.push(`using ${pascalName}.Infrastructure.Persistence;`);
+
+    let efMethod = 'UseSqlServer';
+    if (config.database === 'postgresql') efMethod = 'UseNpgsql';
+    if (config.database === 'sqlite') efMethod = 'UseSqlite';
+
+    dbRegistration += `
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' was not found.");
 
         services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
         {
-            options.UseSqlServer(connectionString);
+            options.${efMethod}(connectionString);
             options.AddInterceptors(serviceProvider.GetServices<Microsoft.EntityFrameworkCore.Diagnostics.ISaveChangesInterceptor>());
-        });`
-      : `        services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
-        {
-            options.AddInterceptors(serviceProvider.GetServices<Microsoft.EntityFrameworkCore.Diagnostics.ISaveChangesInterceptor>());
-            throw new InvalidOperationException(
-                "No database provider was selected. Re-run the generator with SQL Server enabled, or register a provider in Infrastructure DependencyInjection.");
-        });`,
-    __SQL_SERVER_USING__: options.sqlServer ? 'using Microsoft.EntityFrameworkCore;\n' : 'using Microsoft.EntityFrameworkCore;\n',
-  };
+        });
 
-  await copyTemplate(path.join(templatesRoot(), 'backend'), options.targetDirectory, replacements);
+        services.AddScoped<IApplicationDbContext>(provider =>
+            provider.GetRequiredService<ApplicationDbContext>());
+`;
+  }
+
+  if (config.orm === 'dapper' || config.orm === 'efcore-dapper') {
+    usings.push(`using ${pascalName}.Application.Abstractions.Persistence;`);
+    usings.push(`using ${pascalName}.Infrastructure.Persistence;`);
+    dbRegistration += `
+        services.AddScoped<IDbConnectionFactory, DbConnectionFactory>();
+`;
+  }
+
+  if (config.backgroundJobs === 'hangfire') {
+    usings.push('using Hangfire;');
+    let storageMethod = 'UseSqlServerStorage(connectionString)';
+    if (config.database === 'postgresql') storageMethod = 'UsePostgreSqlStorage(connectionString)';
+    if (config.database === 'sqlite') storageMethod = 'UseMemoryStorage()';
+
+    dbRegistration += `
+        services.AddHangfire(config =>
+        {
+            config.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+                  .UseSimpleAssemblyNameTypeSerializer()
+                  .UseRecommendedSerializerSettings()
+                  .${storageMethod};
+        });
+        services.AddHangfireServer();
+`;
+  }
+
+  const distinctUsings = [...new Set(usings)].join('\n');
+
+  const content = `${distinctUsings}
+
+namespace ${pascalName}.Infrastructure;
+
+public static partial class DependencyInjection
+{
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+${dbRegistration}
+        RegisterGeneratedInfrastructure(services, configuration);
+
+        return services;
+    }
+
+    static partial void RegisterGeneratedInfrastructure(
+        IServiceCollection services,
+        IConfiguration configuration);
+}
+`;
+
+  await writeFile(path.join(targetDir, 'Infrastructure', 'DependencyInjection.cs'), content);
+}
+
+/**
+ * @param {string} targetDir
+ * @param {string} pascalName
+ * @param {object} config
+ */
+async function writeApplicationDi(targetDir, pascalName, config) {
+  const usings = ['using FluentValidation;', 'using Microsoft.Extensions.DependencyInjection;'];
+
+  let diBody = '        services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);\n';
+
+  if (config.architecture === 'cqrs-mediatr') {
+    usings.push('using MediatR;');
+    usings.push(`using ${pascalName}.Application.Behaviors;`);
+    diBody += `        services.AddMediatR(configuration =>
+        {
+            configuration.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly);
+            configuration.AddOpenBehavior(typeof(ValidationBehavior<,>));
+            configuration.AddOpenBehavior(typeof(LoggingBehavior<,>));
+        });\n`;
+  }
+
+  if (config.mapping === 'automapper') {
+    usings.push('using AutoMapper;');
+    diBody += '        services.AddAutoMapper(typeof(DependencyInjection).Assembly);\n';
+  }
+
+  const distinctUsings = [...new Set(usings)].join('\n');
+
+  const content = `${distinctUsings}
+
+namespace ${pascalName}.Application;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddApplication(this IServiceCollection services)
+    {
+${diBody}
+        return services;
+    }
+}
+`;
+
+  await writeFile(path.join(targetDir, 'Application', 'DependencyInjection.cs'), content);
+}
+
+/**
+ * @param {string} targetDir
+ * @param {string} pascalName
+ * @param {object} config
+ */
+async function writeProgramCs(targetDir, pascalName, config) {
+  const usings = [
+    `using ${pascalName}.API.ExceptionHandling;`,
+    `using ${pascalName}.Application;`,
+    `using ${pascalName}.Infrastructure;`,
+  ];
+
+  if (config.logging === 'serilog') {
+    usings.push('using Serilog;');
+  }
+
+  let serilogBuilder = '';
+  let serilogMiddleware = '';
+  if (config.logging === 'serilog') {
+    serilogBuilder = `
+builder.Host.UseSerilog((context, services, configuration) =>
+{
+    configuration
+        .ReadFrom.Configuration(context.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext()
+        .WriteTo.Console();
+});
+`;
+    serilogMiddleware = 'app.UseSerilogRequestLogging();\n';
+  }
+
+  let signalrService = '';
+  let signalrEndpoint = '';
+  if (config.realtime === 'signalr') {
+    signalrService = 'builder.Services.AddSignalR();\n';
+    signalrEndpoint = `app.MapHub<${pascalName}.API.Hubs.AppHub>("/hubs/app");\n`;
+  }
+
+  let hangfireEndpoint = '';
+  if (config.backgroundJobs === 'hangfire') {
+    usings.push('using Hangfire;');
+    hangfireEndpoint = 'app.UseHangfireDashboard("/hangfire");\n';
+  }
+
+  const distinctUsings = [...new Set(usings)].join('\n');
+
+  const content = `${distinctUsings}
+
+var builder = WebApplication.CreateBuilder(args);
+${serilogBuilder}
+builder.Services.AddApplication();
+builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddControllers();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+builder.Services.AddHealthChecks();
+${signalrService}
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? ["http://localhost:3000", "http://localhost:5173", "http://localhost:4200"];
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Client", policy =>
+    {
+        policy
+            .WithOrigins(allowedOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
+var app = builder.Build();
+
+app.UseExceptionHandler();
+${serilogMiddleware}
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
+app.UseCors("Client");
+app.MapHealthChecks("/health");
+${hangfireEndpoint}${signalrEndpoint}app.MapControllers();
+app.Run();
+`;
+
+  await writeFile(path.join(targetDir, 'API', 'Program.cs'), content);
+}
+
+/**
+ * @param {string} targetDir
+ * @param {string} pascalName
+ * @param {object} config
+ */
+async function writeDapperConnectionFactory(targetDir, pascalName, config) {
+  // Interface in Application
+  const iface = `using System.Data;
+
+namespace ${pascalName}.Application.Abstractions.Persistence;
+
+public interface IDbConnectionFactory
+{
+    IDbConnection CreateConnection();
+}
+`;
+  await writeFile(path.join(targetDir, 'Application', 'Abstractions', 'Persistence', 'IDbConnectionFactory.cs'), iface);
+
+  // Implementation in Infrastructure
+  let connectionClass = 'SqlConnection';
+  let connectionUsing = 'using Microsoft.Data.SqlClient;';
+  if (config.database === 'postgresql') {
+    connectionClass = 'NpgsqlConnection';
+    connectionUsing = 'using Npgsql;';
+  } else if (config.database === 'sqlite') {
+    connectionClass = 'SqliteConnection';
+    connectionUsing = 'using Microsoft.Data.Sqlite;';
+  }
+
+  const impl = `using System.Data;
+using Microsoft.Extensions.Configuration;
+using ${pascalName}.Application.Abstractions.Persistence;
+${connectionUsing}
+
+namespace ${pascalName}.Infrastructure.Persistence;
+
+public class DbConnectionFactory : IDbConnectionFactory
+{
+    private readonly string _connectionString;
+
+    public DbConnectionFactory(IConfiguration configuration)
+    {
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Connection string 'DefaultConnection' was not found.");
+    }
+
+    public IDbConnection CreateConnection()
+    {
+        return new ${connectionClass}(_connectionString);
+    }
+}
+`;
+  await writeFile(path.join(targetDir, 'Infrastructure', 'Persistence', 'DbConnectionFactory.cs'), impl);
+}
+
+/**
+ * @param {string} targetDir
+ * @param {string} pascalName
+ */
+async function writeSignalRHub(targetDir, pascalName) {
+  const hub = `using Microsoft.AspNetCore.SignalR;
+
+namespace ${pascalName}.API.Hubs;
+
+public class AppHub : Hub
+{
+    public async Task SendMessage(string user, string message)
+    {
+        await Clients.All.SendAsync("ReceiveMessage", user, message);
+    }
+}
+`;
+  await writeFile(path.join(targetDir, 'API', 'Hubs', 'AppHub.cs'), hub);
 }

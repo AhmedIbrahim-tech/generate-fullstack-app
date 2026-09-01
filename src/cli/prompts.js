@@ -1,60 +1,144 @@
 import { input, select, confirm } from '@inquirer/prompts';
 import { DEFAULT_OPTIONS } from './arguments.js';
-import { printGenerationSummary } from './summary.js';
+import { printGenerationSummary, printRecommendedDefaultsSummary } from './summary.js';
 import { validateProjectName, validatePackageManager } from '../utils/validation.js';
 import { GenerationError } from '../utils/errors.js';
 import { defaultFrontendSelection, resolveFrontendSelection } from '../models/frontend.js';
+import { defaultBackendSelection } from '../models/backend.js';
+import { loadUserPreferences, saveUserPreferences } from '../utils/user-preferences.js';
 
 /**
  * @param {Record<string, unknown>} parsed
  */
 export async function resolveOptions(parsed) {
-  const projectName = await resolveProjectName(parsed);
-  const names = projectName.names;
+  const projectNameResult = await resolveProjectName(parsed);
+  const names = projectNameResult.names;
 
-  const backend = await resolveFlag(parsed, 'backend', 'Include ASP.NET Core backend?', DEFAULT_OPTIONS.backend);
-  const sqlServer = backend
-    ? await resolveFlag(parsed, 'sqlServer', 'Use SQL Server?', DEFAULT_OPTIONS.sqlServer)
-    : false;
+  // Check for saved developer preferences
+  const savedPreferences = loadUserPreferences();
+  let preferencesAction = 'fresh';
 
-  const frontend = await resolveFrontend(parsed);
-  const packageManager = await resolvePackageManager(parsed);
-
-  const modules = await resolveV4Modules(parsed, backend, frontend.enabled);
-
-  const localization = frontend.enabled
-    ? await resolveFlag(parsed, 'localization', 'Include UI localization foundation?', DEFAULT_OPTIONS.localization)
-    : false;
-
-  if (!backend && !frontend.enabled) {
-    throw new GenerationError('At least one of backend or frontend must be enabled.', {
-      step: 'Validate generation options',
-      command: '(none)',
-      targetDirectory: parsed.output,
+  if (!parsed.yes && savedPreferences && parsed.useSavedPreferences === undefined && !parsed.mode) {
+    preferencesAction = await select({
+      message: 'Found saved developer preferences:',
+      choices: [
+        { name: 'Use saved preferences', value: 'use-saved' },
+        { name: 'Customize', value: 'customize' },
+        { name: 'Start fresh', value: 'fresh' },
+      ],
     });
+  } else if (parsed.useSavedPreferences && savedPreferences) {
+    preferencesAction = 'use-saved';
   }
+
+  // 1. What do you want to create?
+  const mode = await resolveCreationMode(parsed, preferencesAction, savedPreferences);
+  const backendEnabled = mode === 'fullstack' || mode === 'backend-only';
+  const frontendEnabled = mode === 'fullstack' || mode === 'frontend-only';
+
+  // 2. Setup Mode: Recommended Defaults vs Customize
+  const setupMode = await resolveSetupMode(parsed, preferencesAction, savedPreferences);
+
+  let backend = null;
+  let frontend = { enabled: false, library: null, framework: null };
+
+  if (setupMode === 'recommended' && preferencesAction !== 'use-saved') {
+    // Determine target frontend library/framework for recommended summary
+    let targetFrontend = defaultFrontendSelection('next');
+    if (frontendEnabled) {
+      const frontendLib = await resolveFrontendLibrary(parsed);
+      let reactFw = 'next';
+      if (frontendLib === 'react') {
+        reactFw = await resolveReactFramework(parsed);
+      }
+      targetFrontend = frontendLib === 'angular'
+        ? resolveFrontendSelection({ frontendLibrary: 'angular' }).frontend
+        : defaultFrontendSelection(reactFw);
+    }
+
+    if (!parsed.yes) {
+      printRecommendedDefaultsSummary(mode, targetFrontend);
+      const continueWithRecommended = await select({
+        message: 'Continue with these settings?',
+        choices: [
+          { name: 'Yes (Generate recommended stack)', value: 'yes' },
+          { name: 'Customize (Fine-tune architectural decisions)', value: 'customize' },
+        ],
+      });
+
+      if (continueWithRecommended === 'customize') {
+        backend = backendEnabled ? await resolveCustomBackend(parsed) : null;
+        frontend = frontendEnabled ? await resolveCustomFrontend(parsed, targetFrontend) : { enabled: false };
+      } else {
+        backend = backendEnabled ? defaultBackendSelection() : null;
+        frontend = frontendEnabled ? targetFrontend : { enabled: false };
+      }
+    } else {
+      backend = backendEnabled ? defaultBackendSelection() : null;
+      frontend = frontendEnabled ? targetFrontend : { enabled: false };
+    }
+  } else if (preferencesAction === 'use-saved' && savedPreferences) {
+    backend = backendEnabled
+      ? { ...defaultBackendSelection(), ...(savedPreferences.backend ?? {}) }
+      : null;
+    frontend = frontendEnabled
+      ? { ...defaultFrontendSelection(), ...(savedPreferences.frontend ?? {}) }
+      : { enabled: false };
+  } else {
+    // Customization Mode
+    backend = backendEnabled ? await resolveCustomBackend(parsed) : null;
+    frontend = frontendEnabled ? await resolveCustomFrontend(parsed) : { enabled: false };
+  }
+
+  // Package manager selection if frontend is enabled
+  const packageManager = frontend.enabled
+    ? await resolvePackageManager(parsed, savedPreferences?.packageManager)
+    : (parsed.packageManager ?? DEFAULT_OPTIONS.packageManager);
+
+  // V4 module options compatibility
+  const modules = {
+    auth: Boolean(backend?.authentication && backend.authentication !== 'none'),
+    users: Boolean(backend?.authentication && backend.authentication !== 'none'),
+    permissions: Boolean(backend?.authentication && backend.authentication !== 'none'),
+    audit: false,
+    notifications: Boolean(backend?.realtime === 'signalr'),
+    localization: Boolean(frontend.localization),
+    richText: false,
+    dashboard: Boolean(frontend.enabled),
+    defaultRole: 'User',
+    roles: ['Admin', 'Editor', 'User'],
+  };
 
   const options = {
     ...names,
     output: parsed.output,
     yes: Boolean(parsed.yes),
+    mode,
+    setupMode,
     packageManager,
-    backend,
+    backend: backend ? { ...backend, enabled: true } : { enabled: false },
     frontend,
-    sqlServer,
-    auth: Boolean(modules.auth),
-    localization,
-    dashboard: Boolean(modules.dashboard),
+    sqlServer: backend?.database === 'sqlserver',
+    auth: Boolean(backend?.authentication && backend.authentication !== 'none'),
+    localization: Boolean(frontend.localization),
+    dashboard: Boolean(frontend.enabled),
+    realtime: backend?.realtime === 'signalr' || frontend?.realtime === 'signalr',
     modules,
-    defaultRole: modules.defaultRole ?? 'User',
-    roles: modules.roles ?? ['Admin', 'Editor', 'User'],
+    defaultRole: 'User',
+    roles: ['Admin', 'Editor', 'User'],
+    saveDefaults: parsed.saveDefaults,
   };
 
+  // Final confirmation summary before generation
   if (!parsed.yes) {
     printGenerationSummary(options);
-    const proceed = await confirm({ message: 'Continue?', default: true });
-    if (!proceed) {
-      throw new GenerationError('Generation cancelled.', {
+    const generateConfirmed = await confirm({
+      message: 'Generate project?',
+      default: true,
+    });
+
+    if (!generateConfirmed) {
+      throw new GenerationError('Generation cancelled by user.', {
         step: 'Confirm generation summary',
         command: '(none)',
         targetDirectory: parsed.output,
@@ -67,200 +151,327 @@ export async function resolveOptions(parsed) {
 
 /**
  * @param {Record<string, unknown>} parsed
- * @param {boolean} backend
- * @param {boolean} frontendEnabled
+ * @param {string} preferencesAction
+ * @param {object | null} savedPreferences
  */
-async function resolveV4Modules(parsed, backend, frontendEnabled) {
-  /** @type {Record<string, boolean|string|string[]>} */
-  const modules = {
-    auth: false,
-    users: false,
-    permissions: false,
-    audit: false,
-    notifications: false,
-    localization: false,
-    richText: false,
-    dashboard: Boolean(parsed.dashboard ?? (parsed.yes ? DEFAULT_OPTIONS.dashboard : false)),
-    defaultRole: 'User',
-    roles: ['Admin', 'Editor', 'User'],
-  };
-
-  if (!backend) {
-    modules.dashboard = frontendEnabled
-      ? await resolveFlag(parsed, 'dashboard', 'Include dashboard foundation?', DEFAULT_OPTIONS.dashboard)
-      : false;
-    return modules;
+async function resolveCreationMode(parsed, preferencesAction, savedPreferences) {
+  if (parsed.mode) {
+    return parsed.mode;
   }
-
+  if (parsed.backend === false && parsed.frontendEnabled !== false) {
+    return 'frontend-only';
+  }
+  if (parsed.backend !== false && parsed.frontendEnabled === false) {
+    return 'backend-only';
+  }
   if (parsed.yes) {
-    modules.auth = Boolean(parsed.auth ?? DEFAULT_OPTIONS.auth);
-    modules.users = Boolean(parsed.users ?? (modules.auth && DEFAULT_OPTIONS.users));
-    modules.permissions = Boolean(parsed.permissions ?? (modules.auth && DEFAULT_OPTIONS.permissions));
-    modules.audit = Boolean(parsed.audit ?? DEFAULT_OPTIONS.audit);
-    modules.notifications = Boolean(parsed.notifications ?? DEFAULT_OPTIONS.notifications);
-    modules.localization = Boolean(parsed.domainLocalization ?? DEFAULT_OPTIONS.domainLocalization);
-    modules.richText = Boolean(parsed.richText ?? DEFAULT_OPTIONS.richText);
-    modules.dashboard = Boolean(parsed.dashboard ?? DEFAULT_OPTIONS.dashboard);
-    return modules;
+    return DEFAULT_OPTIONS.mode;
+  }
+  if (preferencesAction === 'use-saved' && savedPreferences?.mode) {
+    return savedPreferences.mode;
   }
 
-  const wantAuth = await confirm({
-    message: 'Authentication?',
-    default: true,
+  return select({
+    message: 'What do you want to create?',
+    choices: [
+      { name: '1. Full Stack (ASP.NET Core Web API + Frontend Client)', value: 'fullstack' },
+      { name: '2. Backend Only (ASP.NET Core Web API)', value: 'backend-only' },
+      { name: '3. Frontend Only (React / Next.js / Vite / Angular Client)', value: 'frontend-only' },
+    ],
   });
-  modules.auth = wantAuth;
+}
 
-  if (wantAuth) {
-    await select({
-      message: 'Authentication mode:',
-      choices: [{ name: 'Identity + JWT + Refresh Cookie', value: 'jwt-refresh' }],
-    });
-
-    modules.users = await confirm({
-      message: 'Include user management?',
-      default: true,
-    });
-
-    const authz = await select({
-      message: 'Authorization:',
-      choices: [
-        { name: 'Roles + Permissions', value: 'roles-permissions' },
-        { name: 'Roles only', value: 'roles' },
-      ],
-    });
-    modules.permissions = authz === 'roles-permissions';
-
-    modules.defaultRole = await select({
-      message: 'Default registration role:',
-      choices: [
-        { name: 'User', value: 'User' },
-        { name: 'None', value: 'None' },
-      ],
-    });
+/**
+ * @param {Record<string, unknown>} parsed
+ * @param {string} preferencesAction
+ * @param {object | null} savedPreferences
+ */
+async function resolveSetupMode(parsed, preferencesAction, savedPreferences) {
+  if (parsed.setupMode) {
+    return parsed.setupMode;
+  }
+  if (parsed.yes) {
+    return DEFAULT_OPTIONS.setupMode;
+  }
+  if (preferencesAction === 'use-saved') {
+    return 'saved';
+  }
+  if (preferencesAction === 'customize') {
+    return 'customize';
   }
 
-  modules.audit = await confirm({
-    message: 'Audit trail?',
-    default: true,
+  return select({
+    message: 'Setup Mode:',
+    choices: [
+      { name: '1. Recommended Defaults (Production-ready starting point)', value: 'recommended' },
+      { name: '2. Customize (Configure architecture, data access, styling, state, etc.)', value: 'customize' },
+    ],
   });
-
-  modules.notifications = wantAuth
-    ? await confirm({ message: 'Notifications?', default: true })
-    : false;
-
-  modules.localization = await confirm({
-    message: 'Domain content localization?',
-    default: false,
-  });
-
-  modules.richText = await confirm({
-    message: 'Rich text foundation?',
-    default: false,
-  });
-
-  modules.dashboard = frontendEnabled
-    ? await confirm({ message: 'Dashboard CRUD foundation?', default: true })
-    : false;
-
-  // Allow CLI overrides when mixed with prompts
-  if (typeof parsed.auth === 'boolean') modules.auth = parsed.auth;
-  if (typeof parsed.users === 'boolean') modules.users = parsed.users;
-  if (typeof parsed.permissions === 'boolean') modules.permissions = parsed.permissions;
-  if (typeof parsed.audit === 'boolean') modules.audit = parsed.audit;
-  if (typeof parsed.notifications === 'boolean') modules.notifications = parsed.notifications;
-  if (typeof parsed.domainLocalization === 'boolean') modules.localization = parsed.domainLocalization;
-  if (typeof parsed.richText === 'boolean') modules.richText = parsed.richText;
-  if (typeof parsed.dashboard === 'boolean') modules.dashboard = parsed.dashboard;
-
-  return modules;
 }
 
 /**
  * @param {Record<string, unknown>} parsed
  */
-async function resolveFrontend(parsed) {
-  if (parsed.frontendEnabled === false) {
-    const resolved = resolveFrontendSelection({ frontendEnabled: false });
-    if (!resolved.ok) {
-      throw frontendError(resolved.error, parsed.output);
-    }
-    return resolved.frontend;
+async function resolveFrontendLibrary(parsed) {
+  if (parsed.frontendLibrary) {
+    return parsed.frontendLibrary;
+  }
+  if (parsed.yes) {
+    return DEFAULT_OPTIONS.frontendLibrary;
   }
 
-  const flagsProvided = parsed.frontendLibrary !== undefined || parsed.reactFramework !== undefined;
-
-  if (parsed.yes && !flagsProvided && parsed.frontendEnabled !== false) {
-    return defaultFrontendSelection();
-  }
-
-  if (flagsProvided) {
-    let reactFramework = parsed.reactFramework;
-    if (!parsed.yes && parsed.frontendLibrary === 'react' && !reactFramework) {
-      reactFramework = await select({
-        message: 'Choose React framework:',
-        choices: [
-          { name: 'Next.js', value: 'next' },
-          { name: 'Vite', value: 'vite' },
-        ],
-      });
-    }
-
-    const resolved = resolveFrontendSelection({
-      frontendEnabled: parsed.frontendEnabled ?? true,
-      frontendLibrary: parsed.frontendLibrary,
-      reactFramework,
-    });
-    if (!resolved.ok) {
-      throw frontendError(resolved.error, parsed.output);
-    }
-    return resolved.frontend;
-  }
-
-  const includeFrontend = await confirm({
-    message: 'Include frontend?',
-    default: true,
-  });
-
-  if (!includeFrontend) {
-    return { enabled: false, library: null, framework: null };
-  }
-
-  const library = await select({
-    message: 'Choose frontend framework:',
+  return select({
+    message: 'Frontend Framework:',
     choices: [
       { name: 'React', value: 'react' },
       { name: 'Angular', value: 'angular' },
     ],
   });
-
-  let reactFramework;
-  if (library === 'react') {
-    reactFramework = await select({
-      message: 'Choose React framework:',
-      choices: [
-        { name: 'Next.js', value: 'next' },
-        { name: 'Vite', value: 'vite' },
-      ],
-    });
-  }
-
-  const resolved = resolveFrontendSelection({
-    frontendEnabled: true,
-    frontendLibrary: library,
-    reactFramework,
-  });
-  if (!resolved.ok) {
-    throw frontendError(resolved.error, parsed.output);
-  }
-  return resolved.frontend;
 }
 
-function frontendError(message, output) {
-  return new GenerationError(message, {
-    step: 'Validate frontend selection',
-    command: '(none)',
-    targetDirectory: output,
+/**
+ * @param {Record<string, unknown>} parsed
+ */
+async function resolveReactFramework(parsed) {
+  if (parsed.reactFramework) {
+    return parsed.reactFramework;
+  }
+  if (parsed.yes) {
+    return DEFAULT_OPTIONS.reactFramework;
+  }
+
+  return select({
+    message: 'React Framework:',
+    choices: [
+      { name: 'Next.js (App Router)', value: 'next' },
+      { name: 'Vite (SPA)', value: 'vite' },
+    ],
   });
+}
+
+/**
+ * @param {Record<string, unknown>} parsed
+ */
+async function resolveCustomBackend(parsed) {
+  if (parsed.yes) {
+    return {
+      enabled: true,
+      architecture: parsed.architecture ?? DEFAULT_OPTIONS.architecture,
+      mapping: parsed.mapping ?? DEFAULT_OPTIONS.mapping,
+      orm: parsed.orm ?? DEFAULT_OPTIONS.orm,
+      database: parsed.database ?? (parsed.sqlServer === false ? 'sqlite' : DEFAULT_OPTIONS.database),
+      logging: parsed.logging ?? DEFAULT_OPTIONS.logging,
+      backgroundJobs: parsed.backgroundJobs ?? DEFAULT_OPTIONS.backgroundJobs,
+      realtime: parsed.realtime ?? DEFAULT_OPTIONS.realtime,
+      authentication: parsed.authMode ?? (parsed.auth === false ? 'none' : DEFAULT_OPTIONS.authMode),
+    };
+  }
+
+  const architecture = parsed.architecture ?? (await select({
+    message: 'Application Architecture:',
+    choices: [
+      { name: 'CQRS + MediatR (Command/Query separation with pipeline behaviors)', value: 'cqrs-mediatr' },
+      { name: 'Application Services (Direct service interfaces and implementations)', value: 'services' },
+    ],
+  }));
+
+  const mapping = parsed.mapping ?? (await select({
+    message: 'Mapping:',
+    choices: [
+      { name: 'Manual Mapping (Clean extension methods & zero runtime overhead)', value: 'manual' },
+      { name: 'AutoMapper (Convention-based profile mapping)', value: 'automapper' },
+    ],
+  }));
+
+  const orm = parsed.orm ?? (await select({
+    message: 'Data Access:',
+    choices: [
+      { name: 'Entity Framework Core (Full ORM with migrations & interceptors)', value: 'efcore' },
+      { name: 'Dapper (Lightweight micro-ORM with high-performance SQL)', value: 'dapper' },
+      { name: 'EF Core + Dapper (EF Core for writes/migrations, Dapper for high-speed queries)', value: 'efcore-dapper' },
+    ],
+  }));
+
+  const database = parsed.database ?? (await select({
+    message: 'Database:',
+    choices: [
+      { name: 'SQL Server', value: 'sqlserver' },
+      { name: 'PostgreSQL', value: 'postgresql' },
+      { name: 'SQLite', value: 'sqlite' },
+    ],
+  }));
+
+  const logging = parsed.logging ?? (await select({
+    message: 'Logging:',
+    choices: [
+      { name: 'Serilog (Structured logging with console/file sinks)', value: 'serilog' },
+      { name: 'Built-in ILogger (Standard Microsoft.Extensions.Logging)', value: 'ilogger' },
+    ],
+  }));
+
+  const backgroundJobs = parsed.backgroundJobs ?? (await select({
+    message: 'Background Jobs:',
+    choices: [
+      { name: 'None', value: 'none' },
+      { name: 'Hangfire (Persistent background job processing & dashboard)', value: 'hangfire' },
+    ],
+  }));
+
+  const realtime = parsed.realtime ?? (await select({
+    message: 'Real Time Communication:',
+    choices: [
+      { name: 'None', value: 'none' },
+      { name: 'SignalR (WebSockets & real-time communication hubs)', value: 'signalr' },
+    ],
+  }));
+
+  const authentication = parsed.authMode ?? (await select({
+    message: 'Authentication:',
+    choices: [
+      { name: 'ASP.NET Core Identity + JWT (Full auth tokens, roles & refresh cookies)', value: 'identity-jwt' },
+      { name: 'ASP.NET Core Identity (Identity cookie & password management only)', value: 'identity' },
+      { name: 'None (Public API without authentication foundation)', value: 'none' },
+    ],
+  }));
+
+  return {
+    enabled: true,
+    architecture,
+    mapping,
+    orm,
+    database,
+    logging,
+    backgroundJobs,
+    realtime,
+    authentication,
+  };
+}
+
+/**
+ * @param {Record<string, unknown>} parsed
+ * @param {object} [baseFrontend]
+ */
+async function resolveCustomFrontend(parsed, baseFrontend) {
+  const library = baseFrontend?.library ?? (await resolveFrontendLibrary(parsed));
+
+  if (library === 'angular') {
+    const styling = parsed.styling ?? 'tailwind';
+    const localization = parsed.localization ?? (await confirm({
+      message: 'Include UI localization foundation (en/ar, RTL/LTR)?',
+      default: true,
+    }));
+    const realtime = parsed.realtime ?? (await select({
+      message: 'Real Time Communication:',
+      choices: [
+        { name: 'None', value: 'none' },
+        { name: 'SignalR Client', value: 'signalr' },
+      ],
+    }));
+
+    return {
+      enabled: true,
+      library: 'angular',
+      framework: null,
+      language: 'typescript',
+      styling,
+      state: 'ngrx',
+      httpClient: 'httpclient',
+      forms: 'reactive-forms',
+      componentSystem: 'none',
+      localization,
+      realtime,
+    };
+  }
+
+  // React Customization
+  const framework = baseFrontend?.framework ?? (await resolveReactFramework(parsed));
+
+  const language = parsed.language ?? (await select({
+    message: 'Language:',
+    choices: [
+      { name: 'TypeScript', value: 'typescript' },
+      { name: 'JavaScript', value: 'javascript' },
+    ],
+  }));
+
+  const styling = parsed.styling ?? (await select({
+    message: 'Styling:',
+    choices: [
+      { name: 'Tailwind CSS', value: 'tailwind' },
+      { name: 'Bootstrap', value: 'bootstrap' },
+    ],
+  }));
+
+  const state = parsed.state ?? (await select({
+    message: 'State Management:',
+    choices: [
+      { name: 'Redux Toolkit (Predictable global state with slices)', value: 'redux' },
+      { name: 'Zustand (Lightweight bearbones state management)', value: 'zustand' },
+      { name: 'None (React standard useState/useContext)', value: 'none' },
+    ],
+  }));
+
+  const httpClient = parsed.httpClient ?? (await select({
+    message: 'HTTP Client:',
+    choices: [
+      { name: 'Axios (Feature-rich promise-based HTTP client)', value: 'axios' },
+      { name: 'Fetch (Native browser Fetch API with clean wrapper)', value: 'fetch' },
+    ],
+  }));
+
+  const forms = parsed.forms ?? (await select({
+    message: 'Forms:',
+    choices: [
+      { name: 'React Hook Form + Zod (Performant forms with type-safe schema validation)', value: 'react-hook-form-zod' },
+      { name: 'None (Native React form handling)', value: 'none' },
+    ],
+  }));
+
+  const localization = parsed.localization ?? (await select({
+    message: 'Localization:',
+    choices: [
+      { name: 'Enabled (Multi-language & RTL/LTR support)', value: true },
+      { name: 'Disabled', value: false },
+    ],
+  }));
+
+  // Component System (Filter shadcn/ui out if Bootstrap is selected)
+  const componentChoices = [
+    { name: 'Material UI (MUI)', value: 'mui' },
+    { name: 'Ant Design', value: 'antd' },
+    { name: 'None (Clean unstyled components)', value: 'none' },
+  ];
+
+  if (styling === 'tailwind') {
+    componentChoices.unshift({ name: 'shadcn/ui (Tailwind-native customizable UI components)', value: 'shadcn' });
+  }
+
+  const componentSystem = parsed.componentSystem ?? (await select({
+    message: 'Component System:',
+    choices: componentChoices,
+  }));
+
+  const realtime = parsed.realtime ?? (await select({
+    message: 'Real Time Communication:',
+    choices: [
+      { name: 'None', value: 'none' },
+      { name: 'SignalR Client (@microsoft/signalr)', value: 'signalr' },
+    ],
+  }));
+
+  return {
+    enabled: true,
+    library: 'react',
+    framework,
+    language,
+    styling,
+    state,
+    httpClient,
+    forms,
+    componentSystem,
+    localization: Boolean(localization),
+    realtime,
+  };
 }
 
 /**
@@ -309,8 +520,9 @@ async function resolveProjectName(parsed) {
 
 /**
  * @param {Record<string, unknown>} parsed
+ * @param {string} [defaultPm]
  */
-async function resolvePackageManager(parsed) {
+async function resolvePackageManager(parsed, defaultPm) {
   if (typeof parsed.packageManager === 'string') {
     if (!validatePackageManager(parsed.packageManager)) {
       throw new GenerationError(`Unsupported package manager "${parsed.packageManager}".`, {
@@ -323,37 +535,16 @@ async function resolvePackageManager(parsed) {
   }
 
   if (parsed.yes) {
-    return DEFAULT_OPTIONS.packageManager;
+    return defaultPm ?? DEFAULT_OPTIONS.packageManager;
   }
 
   return select({
     message: 'Package manager:',
-    default: DEFAULT_OPTIONS.packageManager,
+    default: defaultPm ?? DEFAULT_OPTIONS.packageManager,
     choices: [
       { name: 'npm', value: 'npm' },
       { name: 'yarn', value: 'yarn' },
       { name: 'pnpm', value: 'pnpm' },
     ],
-  });
-}
-
-/**
- * @param {Record<string, unknown>} parsed
- * @param {string} key
- * @param {string} message
- * @param {boolean} defaultValue
- */
-async function resolveFlag(parsed, key, message, defaultValue) {
-  if (typeof parsed[key] === 'boolean') {
-    return parsed[key];
-  }
-
-  if (parsed.yes) {
-    return defaultValue;
-  }
-
-  return confirm({
-    message,
-    default: defaultValue,
   });
 }
