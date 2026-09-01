@@ -31,7 +31,8 @@ import { planNotificationsModule } from './notifications/notifications.generator
 import { planLocalizationModule } from './localization/localization.generator.js';
 import { planRichTextModule } from './rich-text/rich-text.generator.js';
 import { planDashboardModule } from './dashboard/dashboard.generator.js';
-import { finalizePlan } from './modules-orchestrator-helpers.js';
+import { finalizePlan, setModuleManifestContext } from './modules-orchestrator-helpers.js';
+import { getBackendDirectory, getFrontendDirectory } from '../utils/project-paths.js';
 
 const MIGRATION_NAMES = {
   auth: 'AddAuthentication',
@@ -96,6 +97,7 @@ export async function generateModule(options) {
   }
 
   const manifest = await readManifest(projectRoot);
+  setModuleManifestContext(manifest);
   const frontendStrategy = resolveFrontendStrategy(manifest);
   const projectName = inferProjectName(projectRoot, manifest);
 
@@ -160,19 +162,19 @@ export async function generateModule(options) {
     allNotes.push(...(plan.notes ?? []));
 
     if (plan.id === 'auth') {
-      await applyAuthOrchestration(projectRoot, projectName, frontendStrategy);
+      await applyAuthOrchestration(projectRoot, projectName, frontendStrategy, manifest);
     }
 
-    await installPlanPackages(projectRoot, plan, manifest.packageManager ?? 'npm', frontendStrategy);
+    await installPlanPackages(projectRoot, plan, manifest.packageManager ?? 'npm', frontendStrategy, manifest);
     markModuleEnabled(manifest, plan.id);
   }
 
-  await syncInfrastructureRegistrations(projectRoot, projectName, allRegistrations);
+  await syncInfrastructureRegistrations(projectRoot, projectName, allRegistrations, manifest);
   manifest.generatorVersion = MODULE_GENERATOR_VERSION;
   await writeManifest(projectRoot, manifest);
 
   if (options.migration) {
-    await createModuleMigration(projectRoot, projectName, moduleId);
+    await createModuleMigration(projectRoot, projectName, moduleId, manifest);
   }
 
   logger.success(`Module "${moduleId}" installed.`);
@@ -307,22 +309,25 @@ async function applyRegistryUpdates(projectRoot, plan) {
  * @param {string} projectRoot
  * @param {string} projectName
  * @param {{ library?: string|null, framework?: string|null }} frontendStrategy
+ * @param {object} [manifest]
  */
-async function applyAuthOrchestration(projectRoot, projectName, frontendStrategy) {
-  await patchIdentityDbContext(projectRoot, projectName);
-  await patchProgramCs(projectRoot);
-  await mergeAuthAppsettings(projectRoot, frontendStrategy);
-  await ensureAuthPackages(projectRoot);
-  await ensureCorsAllowCredentials(projectRoot, frontendStrategy);
+async function applyAuthOrchestration(projectRoot, projectName, frontendStrategy, manifest) {
+  await patchIdentityDbContext(projectRoot, projectName, manifest);
+  await patchProgramCs(projectRoot, manifest);
+  await mergeAuthAppsettings(projectRoot, frontendStrategy, manifest);
+  await ensureAuthPackages(projectRoot, manifest);
+  await ensureCorsAllowCredentials(projectRoot, frontendStrategy, manifest);
 }
 
 /**
  * @param {string} projectRoot
  * @param {string} projectName
+ * @param {object} [manifest]
  */
-async function patchIdentityDbContext(projectRoot, projectName) {
+async function patchIdentityDbContext(projectRoot, projectName, manifest) {
+  const backendDir = getBackendDirectory(projectRoot, manifest) ?? projectRoot;
   const dbContextPath = path.join(
-    projectRoot,
+    backendDir,
     'Infrastructure',
     'Persistence',
     'ApplicationDbContext.cs',
@@ -357,9 +362,11 @@ async function patchIdentityDbContext(projectRoot, projectName) {
 
 /**
  * @param {string} projectRoot
+ * @param {object} [manifest]
  */
-async function patchProgramCs(projectRoot) {
-  const programPath = path.join(projectRoot, 'API', 'Program.cs');
+async function patchProgramCs(projectRoot, manifest) {
+  const backendDir = getBackendDirectory(projectRoot, manifest) ?? projectRoot;
+  const programPath = path.join(backendDir, 'API', 'Program.cs');
   if (!(await pathExists(programPath))) {
     return;
   }
@@ -374,10 +381,12 @@ async function patchProgramCs(projectRoot) {
 /**
  * @param {string} projectRoot
  * @param {{ library?: string|null, framework?: string|null }} frontendStrategy
+ * @param {object} [manifest]
  */
-async function mergeAuthAppsettings(projectRoot, frontendStrategy) {
-  const appsettingsPath = path.join(projectRoot, 'API', 'appsettings.json');
-  const devPath = path.join(projectRoot, 'API', 'appsettings.Development.json');
+async function mergeAuthAppsettings(projectRoot, frontendStrategy, manifest) {
+  const backendDir = getBackendDirectory(projectRoot, manifest) ?? projectRoot;
+  const appsettingsPath = path.join(backendDir, 'API', 'appsettings.json');
+  const devPath = path.join(backendDir, 'API', 'appsettings.Development.json');
 
   if (await pathExists(appsettingsPath)) {
     const current = JSON.parse(await fs.readFile(appsettingsPath, 'utf8'));
@@ -434,11 +443,13 @@ function defaultOrigin(frontendStrategy) {
 
 /**
  * @param {string} projectRoot
+ * @param {object} [manifest]
  */
-async function ensureAuthPackages(projectRoot) {
-  const infraCsproj = path.join(projectRoot, 'Infrastructure', 'Infrastructure.csproj');
-  const apiCsproj = path.join(projectRoot, 'API', 'API.csproj');
-  const appCsproj = path.join(projectRoot, 'Application', 'Application.csproj');
+async function ensureAuthPackages(projectRoot, manifest) {
+  const backendDir = getBackendDirectory(projectRoot, manifest) ?? projectRoot;
+  const infraCsproj = path.join(backendDir, 'Infrastructure', 'Infrastructure.csproj');
+  const apiCsproj = path.join(backendDir, 'API', 'API.csproj');
+  const appCsproj = path.join(backendDir, 'Application', 'Application.csproj');
 
   const packages = [
     {
@@ -465,7 +476,7 @@ async function ensureAuthPackages(projectRoot) {
       const contents = await fs.readFile(entry.project, 'utf8');
       if (contents.includes(pkg)) continue;
       runCommand('dotnet', ['add', entry.project, 'package', pkg], {
-        cwd: projectRoot,
+        cwd: backendDir,
         step: `Add ${pkg}`,
       });
     }
@@ -486,9 +497,11 @@ async function ensureAuthPackages(projectRoot) {
 /**
  * @param {string} projectRoot
  * @param {{ library?: string|null, framework?: string|null }} frontendStrategy
+ * @param {object} [manifest]
  */
-async function ensureCorsAllowCredentials(projectRoot, frontendStrategy) {
-  const programPath = path.join(projectRoot, 'API', 'Program.cs');
+async function ensureCorsAllowCredentials(projectRoot, frontendStrategy, manifest) {
+  const backendDir = getBackendDirectory(projectRoot, manifest) ?? projectRoot;
+  const programPath = path.join(backendDir, 'API', 'Program.cs');
   if (!(await pathExists(programPath))) return;
   let contents = await fs.readFile(programPath, 'utf8');
   if (contents.includes('AllowCredentials()')) return;
@@ -516,10 +529,11 @@ async function ensureCorsAllowCredentials(projectRoot, frontendStrategy) {
  * @param {object} plan
  * @param {string} packageManager
  * @param {{ library?: string|null }} frontendStrategy
+ * @param {object} [manifest]
  */
-async function installPlanPackages(projectRoot, plan, packageManager, frontendStrategy) {
-  const clientDir = path.join(projectRoot, 'Client');
-  if (!(await pathExists(clientDir))) return;
+async function installPlanPackages(projectRoot, plan, packageManager, frontendStrategy, manifest) {
+  const clientDir = getFrontendDirectory(projectRoot, manifest);
+  if (!clientDir || !(await pathExists(clientDir))) return;
 
   const packages = [];
   if (frontendStrategy?.library === 'react') {
@@ -540,16 +554,18 @@ async function installPlanPackages(projectRoot, plan, packageManager, frontendSt
  * @param {string} projectRoot
  * @param {string} projectName
  * @param {{ method: string, namespace: string }[]} registrations
+ * @param {object} [manifest]
  */
-async function syncInfrastructureRegistrations(projectRoot, projectName, registrations) {
+async function syncInfrastructureRegistrations(projectRoot, projectName, registrations, manifest) {
+  const backendDir = getBackendDirectory(projectRoot, manifest) ?? projectRoot;
   const target = path.join(
-    projectRoot,
+    backendDir,
     'Infrastructure',
     'DependencyInjection.Generated.g.cs',
   );
 
   // Remove legacy Modules.g.cs if present (conflicts with Generated partial).
-  const legacy = path.join(projectRoot, 'Infrastructure', 'DependencyInjection.Modules.g.cs');
+  const legacy = path.join(backendDir, 'Infrastructure', 'DependencyInjection.Modules.g.cs');
   if (await pathExists(legacy)) {
     await fs.unlink(legacy);
   }
@@ -644,11 +660,13 @@ function markModuleEnabled(manifest, moduleId) {
  * @param {string} projectRoot
  * @param {string} projectName
  * @param {string} moduleId
+ * @param {object} [manifest]
  */
-async function createModuleMigration(projectRoot, projectName, moduleId) {
+async function createModuleMigration(projectRoot, projectName, moduleId, manifest) {
   const name = MIGRATION_NAMES[moduleId] ?? `Add${pascal(moduleId)}`;
-  const infra = path.join(projectRoot, 'Infrastructure');
-  const api = path.join(projectRoot, 'API');
+  const backendDir = getBackendDirectory(projectRoot, manifest) ?? projectRoot;
+  const infra = path.join(backendDir, 'Infrastructure');
+  const api = path.join(backendDir, 'API');
   if (!(await pathExists(infra)) || !(await pathExists(api))) {
     logger.info('Skipping migration — backend projects not found.');
     return;
@@ -669,7 +687,7 @@ async function createModuleMigration(projectRoot, projectName, moduleId) {
       'Persistence/Migrations',
     ],
     {
-      cwd: projectRoot,
+      cwd: backendDir,
       step: `Create migration ${name}`,
     },
   );

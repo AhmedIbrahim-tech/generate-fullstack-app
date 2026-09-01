@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { toTypeScriptType } from '../../fields/field-types.js';
 import { toCamelCase, toKebabCase } from '../../utils/feature-naming.js';
+import { getFrontendFilePath } from '../../../utils/project-paths.js';
 
 /**
  * Plan every Angular file for a generated feature.
@@ -16,7 +17,7 @@ import { toCamelCase, toKebabCase } from '../../utils/feature-naming.js';
  */
 export function planAngularFeatureFiles(config) {
   const ctx = buildContext(config);
-  const base = path.join('Client', 'src', 'app', 'features', ctx.kebabPlural);
+  const base = getFrontendFilePath(config, 'src', 'app', 'features', ctx.kebabPlural);
 
   /** @type {{ relativePath: string, contents: string }[]} */
   const files = [];

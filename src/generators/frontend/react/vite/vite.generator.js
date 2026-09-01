@@ -4,7 +4,7 @@ import { runCommand } from '../../../../utils/command.js';
 import { add, addDev, install, packageManagerUserAgent } from '../../../../utils/package-manager.js';
 import { copyTemplate, pathExists, templatesRoot, writeFile } from '../../../../utils/filesystem.js';
 import { logger } from '../../../../utils/logger.js';
-import { CLIENT_STAGING_NAME, promoteStagingClient } from '../../client-setup.js';
+import { STAGING_DIR_NAME, promoteStagingClient } from '../../client-setup.js';
 import { installReactCommonPackages, overlayReactCommon } from '../react-common.generator.js';
 
 /**
@@ -15,13 +15,16 @@ export async function generateViteFrontend(options) {
   const isTs = frontend.language !== 'javascript';
   const isTailwind = frontend.styling !== 'bootstrap';
   const templateName = isTs ? 'react-ts' : 'react';
+  const frontendDir = options.frontendDirectory ?? (options.paths?.frontend
+    ? (options.paths.frontend === '.' ? options.targetDirectory : path.join(options.targetDirectory, options.paths.frontend))
+    : options.targetDirectory);
 
   runCommand(
     'npx',
     [
       '--yes',
       'create-vite@latest',
-      CLIENT_STAGING_NAME,
+      STAGING_DIR_NAME,
       '--template',
       templateName,
       '--no-interactive',
@@ -38,7 +41,7 @@ export async function generateViteFrontend(options) {
     },
   );
 
-  const clientDir = await promoteStagingClient(options.targetDirectory, options.folderName);
+  const clientDir = await promoteStagingClient(options.targetDirectory, frontendDir, options.folderName);
   logger.success('Vite client created');
 
   if (!(await pathExists(path.join(clientDir, 'node_modules')))) {

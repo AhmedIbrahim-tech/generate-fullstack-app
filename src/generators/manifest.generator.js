@@ -2,6 +2,7 @@ import path from 'node:path';
 import { writeFile } from '../utils/filesystem.js';
 import { readPackageMeta } from '../cli/arguments.js';
 import { buildDefaultModulesBlock } from '../module-generator/module.registry.js';
+import { resolveProjectPaths } from '../utils/project-paths.js';
 
 /**
  * @param {object} options
@@ -12,6 +13,11 @@ export async function writeGenerationManifest(options) {
     ? (typeof options.backend === 'object' ? options.backend : { enabled: true })
     : { enabled: false };
   const frontend = options.frontend?.enabled ? options.frontend : { enabled: false };
+
+  const paths = options.paths ?? resolveProjectPaths({
+    backend,
+    frontend,
+  });
 
   const modules = buildDefaultModulesBlock({
     auth: Boolean(options.modules?.auth ?? options.auth),
@@ -36,6 +42,10 @@ export async function writeGenerationManifest(options) {
   const manifest = {
     generatorVersion: pkg.version,
     projectName: options.pascalName,
+    paths: {
+      backend: paths.backend,
+      frontend: paths.frontend,
+    },
     backend: backend.enabled
       ? {
           enabled: true,

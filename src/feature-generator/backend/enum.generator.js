@@ -1,5 +1,5 @@
-import path from 'node:path';
 import { groupFields } from '../fields/field-types.js';
+import { getBackendFilePath } from '../../utils/project-paths.js';
 
 /**
  * Plan enum source files for every enum field on the feature.
@@ -39,7 +39,7 @@ export function planEnumFiles(config) {
 
   for (const field of unique.values()) {
     files.push({
-      relativePath: path.join('Domain', 'Enums', `${field.enumName}.cs`),
+      relativePath: getBackendFilePath(config, 'Domain', 'Enums', `${field.enumName}.cs`),
       contents: renderEnum(ns, field),
       writeMode: 'ifMissing',
       conflict: {

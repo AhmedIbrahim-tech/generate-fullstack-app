@@ -1,4 +1,3 @@
-import path from 'node:path';
 import {
   toCSharpType,
   csharpDefaultInitializer,
@@ -6,6 +5,7 @@ import {
 } from '../fields/field-mappers.js';
 import { pluralizePascal, toCamelCase } from '../utils/feature-naming.js';
 import { planLookupFiles, canBeLookupTarget } from './lookup.generator.js';
+import { getBackendFilePath } from '../../utils/project-paths.js';
 
 /**
  * @param {object} config
@@ -15,7 +15,7 @@ export function planApplicationFiles(config) {
   const { pluralName, singularName } = config.feature;
   const ops = config.operations;
   const base = (...segments) =>
-    path.join('Application', 'Features', pluralName, ...segments);
+    getBackendFilePath(config, 'Application', 'Features', pluralName, ...segments);
 
   /** @type {{ relativePath: string, contents: string, writeMode?: string }[]} */
   const files = [

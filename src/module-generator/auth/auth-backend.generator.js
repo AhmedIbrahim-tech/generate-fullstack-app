@@ -1,4 +1,4 @@
-import path from 'node:path';
+import { paths } from '../modules-orchestrator-helpers.js';
 
 /**
  * V4 Authentication module — backend generator.
@@ -73,16 +73,16 @@ export function planAuthBackend(config) {
   const files = [];
 
   const infraAuth = (...segments) =>
-    path.join('Infrastructure', 'Authentication', ...segments);
+    paths.infrastructure('Authentication', ...segments);
   const infraPersistence = (...segments) =>
-    path.join('Infrastructure', 'Persistence', ...segments);
+    paths.infrastructure('Persistence', ...segments);
   const appAbstractions = (...segments) =>
-    path.join('Application', 'Abstractions', ...segments);
+    paths.application('Abstractions', ...segments);
   const appAuthz = (...segments) =>
-    path.join('Application', 'Common', 'Authorization', ...segments);
+    paths.application('Common', 'Authorization', ...segments);
   const appFeature = (...segments) =>
-    path.join('Application', 'Features', 'Auth', ...segments);
-  const api = (...segments) => path.join('API', ...segments);
+    paths.application('Features', 'Auth', ...segments);
+  const api = (...segments) => paths.api(...segments);
 
   // --- Infrastructure/Authentication -------------------------------------
   files.push(

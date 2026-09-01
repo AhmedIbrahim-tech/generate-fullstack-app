@@ -1,49 +1,52 @@
-import path from 'node:path';
+import { getFrontendFilePath } from '../../../utils/project-paths.js';
 
 /**
  * Plan the shared, reusable React form controls used by generated feature
  * modules. Every file is written only when it does not already exist so that
  * user customizations survive regeneration.
  *
+ * @param {object} [config]
  * @returns {{ relativePath: string, contents: string, writeMode: 'ifMissing' }[]}
  */
-export function planSharedReactControls() {
-  const formsBase = path.join('Client', 'src', 'shared', 'components', 'forms');
-  const typesBase = path.join('Client', 'src', 'shared', 'types');
+export function planSharedReactControls(config = {}) {
+  const formsBase = (...segments) =>
+    getFrontendFilePath(config, 'src', 'shared', 'components', 'forms', ...segments);
+  const typesBase = (...segments) =>
+    getFrontendFilePath(config, 'src', 'shared', 'types', ...segments);
 
   return [
     {
-      relativePath: path.join(typesBase, 'stored-file.types.ts'),
+      relativePath: typesBase('stored-file.types.ts'),
       contents: STORED_FILE_TYPES,
       writeMode: 'ifMissing',
     },
     {
-      relativePath: path.join(typesBase, 'lookup.types.ts'),
+      relativePath: typesBase('lookup.types.ts'),
       contents: LOOKUP_TYPES,
       writeMode: 'ifMissing',
     },
     {
-      relativePath: path.join(formsBase, 'EnumSelect.tsx'),
+      relativePath: formsBase('EnumSelect.tsx'),
       contents: ENUM_SELECT,
       writeMode: 'ifMissing',
     },
     {
-      relativePath: path.join(formsBase, 'LookupSelect.tsx'),
+      relativePath: formsBase('LookupSelect.tsx'),
       contents: LOOKUP_SELECT,
       writeMode: 'ifMissing',
     },
     {
-      relativePath: path.join(formsBase, 'MultiLookupSelect.tsx'),
+      relativePath: formsBase('MultiLookupSelect.tsx'),
       contents: MULTI_LOOKUP_SELECT,
       writeMode: 'ifMissing',
     },
     {
-      relativePath: path.join(formsBase, 'FileUploadField.tsx'),
+      relativePath: formsBase('FileUploadField.tsx'),
       contents: FILE_UPLOAD_FIELD,
       writeMode: 'ifMissing',
     },
     {
-      relativePath: path.join(formsBase, 'ImageUploadField.tsx'),
+      relativePath: formsBase('ImageUploadField.tsx'),
       contents: IMAGE_UPLOAD_FIELD,
       writeMode: 'ifMissing',
     },

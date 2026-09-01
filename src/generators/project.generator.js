@@ -13,6 +13,7 @@ import { describeFrontend } from '../models/frontend.js';
 import { describeBackend } from '../models/backend.js';
 import { installEnabledModules } from '../module-generator/module.generator.js';
 import { saveUserPreferences } from '../utils/user-preferences.js';
+import { resolveProjectPaths } from '../utils/project-paths.js';
 
 /**
  * @param {object} options
@@ -35,28 +36,50 @@ export async function generateProject(options) {
   await ensureDir(targetDirectory);
   logger.success('Root directory created');
 
+  const hasBackend = Boolean(options.backend?.enabled || options.backend === true);
+  const hasFrontend = Boolean(options.frontend?.enabled);
+
+  const paths = options.paths ?? resolveProjectPaths({
+    backend: options.backend,
+    frontend: options.frontend,
+  });
+
+  const backendDirectory = hasBackend
+    ? (paths.backend === '.' ? targetDirectory : path.join(targetDirectory, paths.backend))
+    : null;
+
+  const frontendDirectory = hasFrontend
+    ? (paths.frontend === '.' ? targetDirectory : path.join(targetDirectory, paths.frontend))
+    : null;
+
   const replacements = {
     __PASCAL_NAME__: options.pascalName,
     __DISPLAY_NAME__: options.displayName,
     __FOLDER_NAME__: options.folderName,
   };
 
-  const generationOptions = { ...options, targetDirectory, replacements };
+  const generationOptions = {
+    ...options,
+    targetDirectory,
+    backendDirectory,
+    frontendDirectory,
+    paths,
+    replacements,
+  };
 
   await copyTemplate(path.join(templatesRoot(), 'root'), targetDirectory, replacements);
   await writeGeneratedReadme(generationOptions);
 
-  const hasBackend = Boolean(options.backend?.enabled || options.backend === true);
-  if (hasBackend) {
+  if (hasBackend && backendDirectory) {
     await generateBackend(generationOptions);
     await generateSolution(generationOptions);
     runCommand('dotnet', ['restore'], {
-      cwd: targetDirectory,
+      cwd: backendDirectory,
       step: 'Restore backend packages',
     });
   }
 
-  if (options.frontend?.enabled) {
+  if (hasFrontend && frontendDirectory) {
     await generateFrontend(generationOptions);
   }
 
@@ -79,7 +102,7 @@ export async function generateProject(options) {
   if (hasBackend) {
     logger.info(`Backend: ${describeBackend(options.backend)}`);
   }
-  if (options.frontend?.enabled) {
+  if (hasFrontend) {
     logger.info(`Frontend: ${describeFrontend(options.frontend)}`);
   }
   logger.info('Generated files were left in place. Inspect them before running the apps.');

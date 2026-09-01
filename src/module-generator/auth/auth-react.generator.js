@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { paths } from '../modules-orchestrator-helpers.js';
 
 /**
  * V4 Authentication — React module generator.
@@ -24,8 +25,8 @@ export function planAuthReactModule(config) {
     config?.frontendStrategy?.framework === 'vite' ? 'vite' : 'next';
   const ctx = { framework };
 
-  const moduleBase = path.join('Client', 'src', 'modules', 'auth');
-  const libApiBase = path.join('Client', 'src', 'lib', 'api');
+  const moduleBase = paths.reactModule('auth');
+  const libApiBase = paths.client('lib', 'api');
 
   /** @type {{ relativePath: string, contents: string, writeMode?: string }[]} */
   const files = [];
@@ -149,7 +150,7 @@ export function planAuthReactModule(config) {
   /** @type {{ relativePath: string, update: (existing: string) => string }[]} */
   const registryUpdates = [
     {
-      relativePath: path.join('Client', 'src', 'store', 'generated-reducers.ts'),
+      relativePath: paths.client('store', 'generated-reducers.ts'),
       update: (existing) => buildAuthReducerRegistry(existing),
     },
   ];
@@ -159,7 +160,7 @@ export function planAuthReactModule(config) {
 
 /**
  * Idempotently register the auth reducer inside
- * `Client/src/store/generated-reducers.ts`.
+ * `Frontend/src/store/generated-reducers.ts`.
  * @param {string} [existingContents]
  * @returns {string}
  */
@@ -193,7 +194,7 @@ export const generatedReducers = {};
  * @returns {{ relativePath: string, contents: string, writeMode?: string }[]}
  */
 function planNextWiring() {
-  const appBase = path.join('Client', 'src', 'app');
+  const appBase = paths.client('app');
 
   return [
     {
@@ -272,7 +273,7 @@ export default function DashboardGroupLayout({
  * @returns {{ relativePath: string, contents: string, writeMode?: string }[]}
  */
 function planViteWiring() {
-  const appBase = path.join('Client', 'src', 'app');
+  const appBase = paths.client('app');
 
   return [
     {

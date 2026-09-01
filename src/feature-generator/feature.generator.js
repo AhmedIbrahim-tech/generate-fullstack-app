@@ -17,6 +17,7 @@ import {
   writeManifest,
   resolveFrontendStrategy,
 } from './utils/manifest.js';
+import { getBackendDirectory, getFrontendDirectory } from '../utils/project-paths.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -36,14 +37,16 @@ export async function generateFeature(resolvedOptions) {
   const frontendStrategy = resolveFrontendStrategy(manifest);
   const hasBackend = Boolean(typeof manifest.backend === 'object' ? manifest.backend?.enabled : manifest.backend);
   const hasFrontend = Boolean(frontendStrategy.library);
+  const backendDir = getBackendDirectory(projectRoot, manifest) ?? projectRoot;
   const hasFileStorage = await pathExists(
-    path.join(projectRoot, 'Domain', 'Entities', 'StoredFile.cs'),
+    path.join(backendDir, 'Domain', 'Entities', 'StoredFile.cs'),
   );
 
   const config = buildFeatureConfig({
     ...resolvedOptions,
     projectRoot,
     projectName,
+    manifest,
     packageManager: manifest.packageManager ?? 'npm',
     frontendStrategy,
     existingFeatures: Object.values(manifest.features ?? {}),
@@ -352,15 +355,17 @@ async function maybeWriteLocalization(projectRoot, config) {
     edit: `Edit ${config.labels.enSingular}`,
   };
 
+  const frontendDir = getFrontendDirectory(projectRoot, config) ?? projectRoot;
+
   if (strategy?.library === 'react' && strategy.framework === 'next') {
     await mergeJsonMessages(
-      path.join(projectRoot, 'Client', 'src', 'i18n', 'messages', 'en.json'),
+      path.join(frontendDir, 'src', 'i18n', 'messages', 'en.json'),
       keyBase,
       en,
     );
     if (config.labels.arPlural) {
       await mergeJsonMessages(
-        path.join(projectRoot, 'Client', 'src', 'i18n', 'messages', 'ar.json'),
+        path.join(frontendDir, 'src', 'i18n', 'messages', 'ar.json'),
         keyBase,
         {
           title: config.labels.arPlural,
@@ -377,7 +382,7 @@ async function maybeWriteLocalization(projectRoot, config) {
 
   if (strategy?.library === 'react' && strategy.framework === 'vite') {
     await mergeJsonMessages(
-      path.join(projectRoot, 'Client', 'src', 'i18n', 'messages', 'en.json'),
+      path.join(frontendDir, 'src', 'i18n', 'messages', 'en.json'),
       keyBase,
       en,
     );
@@ -413,6 +418,7 @@ async function mergeJsonMessages(filePath, keyBase, value) {
  * @param {object} config
  */
 async function generateMigration(projectRoot, config) {
+  const backendDir = getBackendDirectory(projectRoot, config) ?? projectRoot;
   const name = `Add${config.feature.pluralName}Feature`;
   logger.step(`Generating EF migration ${name}...`);
   try {
@@ -431,7 +437,7 @@ async function generateMigration(projectRoot, config) {
         'Persistence/Migrations',
       ],
       {
-        cwd: projectRoot,
+        cwd: backendDir,
         step: `EF migration ${name}`,
       },
     );

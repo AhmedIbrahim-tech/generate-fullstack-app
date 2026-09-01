@@ -4,12 +4,16 @@ import { runCommand } from '../../../utils/command.js';
 import { add, addDev } from '../../../utils/package-manager.js';
 import { copyTemplate, pathExists, templatesRoot, writeFile } from '../../../utils/filesystem.js';
 import { logger } from '../../../utils/logger.js';
-import { CLIENT_STAGING_NAME, promoteStagingClient } from '../client-setup.js';
+import { STAGING_DIR_NAME, promoteStagingClient } from '../client-setup.js';
 
 /**
  * @param {object} options
  */
 export async function generateAngularFrontend(options) {
+  const frontendDir = options.frontendDirectory ?? (options.paths?.frontend
+    ? (options.paths.frontend === '.' ? options.targetDirectory : path.join(options.targetDirectory, options.paths.frontend))
+    : options.targetDirectory);
+
   runCommand(
     'npx',
     [
@@ -18,7 +22,7 @@ export async function generateAngularFrontend(options) {
       '@angular/cli@20',
       'ng',
       'new',
-      CLIENT_STAGING_NAME,
+      STAGING_DIR_NAME,
       '--routing',
       '--style',
       'css',
@@ -41,7 +45,7 @@ export async function generateAngularFrontend(options) {
     },
   );
 
-  const clientDir = await promoteStagingClient(options.targetDirectory, options.folderName);
+  const clientDir = await promoteStagingClient(options.targetDirectory, frontendDir, options.folderName);
   logger.success('Angular client created');
 
   add(options.packageManager, ['@ngrx/store@20', '@ngrx/effects@20', '@ngrx/store-devtools@20'], {

@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { describeField } from './field-view.js';
+import { getFrontendFilePath } from '../../../utils/project-paths.js';
 
 /**
  * Plan the Next.js App Router files that wrap a React feature module.
@@ -20,24 +21,18 @@ export function planNextFeatureFiles(config) {
   const files = [];
 
   if (surface.dashboard) {
-    const dashBase = path.join(
-      'Client',
-      'src',
-      'app',
-      '(dashboard)',
-      'dashboard',
-      kebabPlural,
-    );
+    const dashBase = (...segments) =>
+      getFrontendFilePath(config, 'src', 'app', '(dashboard)', 'dashboard', kebabPlural, ...segments);
 
     files.push({
-      relativePath: path.join(dashBase, 'page.tsx'),
+      relativePath: dashBase('page.tsx'),
       contents: `export { default } from "@/modules/${kebabPlural}/pages/${Plural}Page";
 `,
     });
 
     if (ops.create) {
       files.push({
-        relativePath: path.join(dashBase, 'create', 'page.tsx'),
+        relativePath: dashBase('create', 'page.tsx'),
         contents: `export { default } from "@/modules/${kebabPlural}/pages/Create${Singular}Page";
 `,
       });
@@ -45,7 +40,7 @@ export function planNextFeatureFiles(config) {
 
     if (ops.update) {
       files.push({
-        relativePath: path.join(dashBase, '[id]', 'edit', 'page.tsx'),
+        relativePath: dashBase('[id]', 'edit', 'page.tsx'),
         contents: `export { default } from "@/modules/${kebabPlural}/pages/Edit${Singular}Page";
 `,
       });
@@ -53,32 +48,24 @@ export function planNextFeatureFiles(config) {
   }
 
   if (surface.public) {
-    const publicBase = path.join(
-      'Client',
-      'src',
-      'app',
-      '(website)',
-      kebabPlural,
-    );
-    const moduleBase = path.join('Client', 'src', 'modules', kebabPlural);
+    const publicBase = (...segments) =>
+      getFrontendFilePath(config, 'src', 'app', '(website)', kebabPlural, ...segments);
+    const moduleBase = (...segments) =>
+      getFrontendFilePath(config, 'src', 'modules', kebabPlural, ...segments);
 
     files.push({
-      relativePath: path.join(
-        moduleBase,
-        'services',
-        `${camel}.server.service.ts`,
-      ),
+      relativePath: moduleBase('services', `${camel}.server.service.ts`),
       contents: renderServerService(config),
     });
 
     files.push({
-      relativePath: path.join(publicBase, 'page.tsx'),
+      relativePath: publicBase('page.tsx'),
       contents: renderPublicListPage(config),
     });
 
     if (ops.getById) {
       files.push({
-        relativePath: path.join(publicBase, '[id]', 'page.tsx'),
+        relativePath: publicBase('[id]', 'page.tsx'),
         contents: renderPublicDetailPage(config),
       });
     }

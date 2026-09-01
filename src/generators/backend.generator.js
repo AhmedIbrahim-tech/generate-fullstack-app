@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { runCommand } from '../utils/command.js';
-import { copyTemplate, removeFilesMatching, templatesRoot, upsertCsprojProperties, writeFile } from '../utils/filesystem.js';
+import { copyTemplate, ensureDir, removeFilesMatching, templatesRoot, upsertCsprojProperties, writeFile } from '../utils/filesystem.js';
 import { assertDotnetAvailable, detectTargetFramework } from '../utils/dotnet.js';
 import { logger } from '../utils/logger.js';
 
@@ -18,6 +18,11 @@ export async function generateBackend(options) {
   assertDotnetAvailable();
   const targetFramework = detectTargetFramework();
   const backend = typeof options.backend === 'object' ? options.backend : {};
+  const backendDir = options.backendDirectory ?? (options.paths?.backend
+    ? (options.paths.backend === '.' ? options.targetDirectory : path.join(options.targetDirectory, options.paths.backend))
+    : options.targetDirectory);
+
+  await ensureDir(backendDir);
 
   const architecture = backend.architecture ?? options.architecture ?? 'cqrs-mediatr';
   const mapping = backend.mapping ?? options.mapping ?? 'manual';
@@ -59,16 +64,16 @@ export async function generateBackend(options) {
     args.push('--no-restore');
 
     runCommand('dotnet', args, {
-      cwd: options.targetDirectory,
+      cwd: backendDir,
       step: `Create ${project.folder} project`,
     });
 
-    await upsertCsprojProperties(path.join(options.targetDirectory, project.folder, `${project.folder}.csproj`), {
+    await upsertCsprojProperties(path.join(backendDir, project.folder, `${project.folder}.csproj`), {
       RootNamespace: `${options.pascalName}.${project.folder}`,
       AssemblyName: `${options.pascalName}.${project.folder}`,
     });
 
-    await removeFilesMatching(path.join(options.targetDirectory, project.folder), (filePath) => {
+    await removeFilesMatching(path.join(backendDir, project.folder), (filePath) => {
       const base = path.basename(filePath);
       return base === 'WeatherForecast.cs' || base === 'WeatherForecastController.cs' || base === 'Class1.cs';
     });
@@ -76,9 +81,9 @@ export async function generateBackend(options) {
     logger.success(project.log);
   }
 
-  addProjectReferences(options.targetDirectory);
-  addBackendPackages(options.targetDirectory, backendConfig);
-  await overlayBackendTemplates(options, backendConfig);
+  addProjectReferences(backendDir);
+  addBackendPackages(backendDir, backendConfig);
+  await overlayBackendTemplates(options, backendConfig, backendDir);
 }
 
 /**
@@ -225,9 +230,9 @@ function addPackages(cwd, csproj, packages) {
 /**
  * @param {object} options
  * @param {object} config
+ * @param {string} backendDir
  */
-async function overlayBackendTemplates(options, config) {
-  const targetDir = options.targetDirectory;
+async function overlayBackendTemplates(options, config, backendDir) {
   const pascalName = options.pascalName;
 
   // Connection strings based on database
@@ -245,28 +250,28 @@ async function overlayBackendTemplates(options, config) {
     __CONNECTION_STRING__: connectionString,
   };
 
-  await copyTemplate(path.join(templatesRoot(), 'backend'), targetDir, replacements);
+  await copyTemplate(path.join(templatesRoot(), 'backend'), backendDir, replacements);
 
   // Write tailored appsettings.json
-  await writeAppSettings(targetDir, pascalName, connectionString, config);
+  await writeAppSettings(backendDir, pascalName, connectionString, config);
 
   // Write tailored Infrastructure/DependencyInjection.cs
-  await writeInfrastructureDi(targetDir, pascalName, config);
+  await writeInfrastructureDi(backendDir, pascalName, config);
 
   // Write tailored Application/DependencyInjection.cs
-  await writeApplicationDi(targetDir, pascalName, config);
+  await writeApplicationDi(backendDir, pascalName, config);
 
   // Write tailored API/Program.cs
-  await writeProgramCs(targetDir, pascalName, config);
+  await writeProgramCs(backendDir, pascalName, config);
 
   // If Dapper is selected, write IDbConnectionFactory
   if (config.orm === 'dapper' || config.orm === 'efcore-dapper') {
-    await writeDapperConnectionFactory(targetDir, pascalName, config);
+    await writeDapperConnectionFactory(backendDir, pascalName, config);
   }
 
   // If SignalR is selected, write AppHub
   if (config.realtime === 'signalr') {
-    await writeSignalRHub(targetDir, pascalName);
+    await writeSignalRHub(backendDir, pascalName);
   }
 }
 

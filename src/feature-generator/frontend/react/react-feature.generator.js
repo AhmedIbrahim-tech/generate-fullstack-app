@@ -1,14 +1,15 @@
 import path from 'node:path';
 import { describeField } from './field-view.js';
+import { getFrontendFilePath } from '../../../utils/project-paths.js';
 
 /**
- * Plan every file that makes up a React feature module under Client/.
+ * Plan every file that makes up a React feature module under Frontend/ (or root).
  * @param {object} config
  * @returns {{ relativePath: string, contents: string }[]}
  */
 export function planReactModuleFiles(config) {
   const ctx = buildContext(config);
-  const base = path.join('Client', 'src', 'modules', ctx.kebabPlural);
+  const base = getFrontendFilePath(config, 'src', 'modules', ctx.kebabPlural);
   /** @type {{ relativePath: string, contents: string }[]} */
   const files = [];
 

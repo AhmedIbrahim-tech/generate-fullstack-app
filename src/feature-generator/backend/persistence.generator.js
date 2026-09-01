@@ -1,5 +1,5 @@
-import path from 'node:path';
 import { groupFields, hasMediaField } from '../fields/field-mappers.js';
+import { getBackendFilePath } from '../../utils/project-paths.js';
 
 /**
  * @param {object} config
@@ -11,7 +11,8 @@ export function planPersistenceFiles(config) {
 
   return [
     {
-      relativePath: path.join(
+      relativePath: getBackendFilePath(
+        config,
         'Infrastructure',
         'Persistence',
         'Configurations',
@@ -20,7 +21,8 @@ export function planPersistenceFiles(config) {
       contents: renderConfiguration(config),
     },
     {
-      relativePath: path.join(
+      relativePath: getBackendFilePath(
+        config,
         'Application',
         'Abstractions',
         'Persistence',
@@ -38,7 +40,8 @@ public partial interface IApplicationDbContext
 `,
     },
     {
-      relativePath: path.join(
+      relativePath: getBackendFilePath(
+        config,
         'Infrastructure',
         'Persistence',
         `ApplicationDbContext.${pluralName}.g.cs`,

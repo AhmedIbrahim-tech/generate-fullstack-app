@@ -1,5 +1,5 @@
-import path from 'node:path';
 import { groupFields } from '../fields/field-mappers.js';
+import { getBackendFilePath } from '../../utils/project-paths.js';
 
 export const LOOKUP_DEFAULT_TAKE = 50;
 export const LOOKUP_MAX_TAKE = 100;
@@ -44,7 +44,7 @@ export function planLookupFiles(config) {
 
   const { pluralName } = config.feature;
   const base = (...segments) =>
-    path.join('Application', 'Features', pluralName, ...segments);
+    getBackendFilePath(config, 'Application', 'Features', pluralName, ...segments);
 
   return [
     {
@@ -56,7 +56,8 @@ export function planLookupFiles(config) {
       contents: renderLookupHandler(config, display),
     },
     {
-      relativePath: path.join(
+      relativePath: getBackendFilePath(
+        config,
         'Application',
         'Common',
         'Models',

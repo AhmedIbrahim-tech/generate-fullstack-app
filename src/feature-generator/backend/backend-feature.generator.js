@@ -4,6 +4,7 @@ import { planApplicationFiles } from './application.generator.js';
 import { planApiFiles } from './api.generator.js';
 import { planFileStorageInfrastructure } from './file-storage.generator.js';
 import { hasMediaField } from '../fields/field-mappers.js';
+import { getBackendFilePath } from '../../utils/project-paths.js';
 
 /**
  * @param {object} config
@@ -18,7 +19,7 @@ export function planBackendFeature(config, context = {}) {
   const files = [];
 
   if (hasMediaField(config.fields) && !context.hasFileStorage) {
-    files.push(...planFileStorageInfrastructure(config.projectName));
+    files.push(...planFileStorageInfrastructure(config.projectName, config));
   }
 
   files.push(...planDomainFiles(config));
@@ -36,8 +37,8 @@ export function planBackendFeature(config, context = {}) {
 export function backendConflictPaths(config) {
   const { singularName, pluralName } = config.feature;
   return [
-    `Domain/Entities/${singularName}.cs`,
-    `Application/Features/${pluralName}`,
-    `API/Controllers/${pluralName}Controller.cs`,
+    getBackendFilePath(config, 'Domain', 'Entities', `${singularName}.cs`),
+    getBackendFilePath(config, 'Application', 'Features', pluralName),
+    getBackendFilePath(config, 'API', 'Controllers', `${pluralName}Controller.cs`),
   ];
 }

@@ -2,6 +2,7 @@ import { deriveFeatureNames } from './utils/feature-naming.js';
 import { validateFeatureName } from './utils/safe-generation.js';
 import { normalizeField } from './fields/field-types.js';
 import { readPackageMeta } from '../cli/arguments.js';
+import { resolveProjectPaths } from '../utils/project-paths.js';
 
 /**
  * @param {object} input
@@ -66,6 +67,7 @@ export function buildFeatureConfig(input) {
   };
 
   const pkg = readPackageMeta();
+  const paths = input.paths ?? resolveProjectPaths(input.manifest ?? {});
 
   return {
     feature: names,
@@ -75,6 +77,7 @@ export function buildFeatureConfig(input) {
     fields,
     labels,
     featureType,
+    paths,
     dryRun: Boolean(input.dryRun),
     migration: Boolean(input.migration),
     force: Boolean(input.force),

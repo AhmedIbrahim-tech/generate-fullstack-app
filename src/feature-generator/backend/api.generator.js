@@ -1,5 +1,5 @@
-import path from 'node:path';
 import { canBeLookupTarget } from './lookup.generator.js';
+import { getBackendFilePath } from '../../utils/project-paths.js';
 
 /**
  * @param {object} config
@@ -10,11 +10,11 @@ export function planApiFiles(config) {
 
   return [
     {
-      relativePath: path.join('API', 'Routing', `Router.${pluralName}.g.cs`),
+      relativePath: getBackendFilePath(config, 'API', 'Routing', `Router.${pluralName}.g.cs`),
       contents: renderRouter(config),
     },
     {
-      relativePath: path.join('API', 'Controllers', `${pluralName}Controller.cs`),
+      relativePath: getBackendFilePath(config, 'API', 'Controllers', `${pluralName}Controller.cs`),
       contents: renderController(config),
     },
   ];

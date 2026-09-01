@@ -1,4 +1,4 @@
-import path from 'node:path';
+import { getFrontendFilePath } from '../../../utils/project-paths.js';
 
 /**
  * Plan the shared Angular form controls and support models used by generated
@@ -7,52 +7,48 @@ import path from 'node:path';
  * Every entry uses `writeMode: 'ifMissing'` so re-running the feature generator
  * never clobbers a shared control the user may have customised.
  *
+ * @param {object} [config]
  * @returns {{ relativePath: string, contents: string, writeMode: 'ifMissing' }[]}
  */
-export function planSharedAngularControls() {
-  const formsDir = path.join(
-    'Client',
-    'src',
-    'app',
-    'shared',
-    'components',
-    'forms',
-  );
-  const modelsDir = path.join('Client', 'src', 'app', 'shared', 'models');
+export function planSharedAngularControls(config = {}) {
+  const formsDir = (...segments) =>
+    getFrontendFilePath(config, 'src', 'app', 'shared', 'components', 'forms', ...segments);
+  const modelsDir = (...segments) =>
+    getFrontendFilePath(config, 'src', 'app', 'shared', 'models', ...segments);
 
   return [
     {
-      relativePath: path.join(modelsDir, 'lookup.model.ts'),
+      relativePath: modelsDir('lookup.model.ts'),
       contents: renderLookupModel(),
       writeMode: 'ifMissing',
     },
     {
-      relativePath: path.join(modelsDir, 'stored-file.model.ts'),
+      relativePath: modelsDir('stored-file.model.ts'),
       contents: renderStoredFileModel(),
       writeMode: 'ifMissing',
     },
     {
-      relativePath: path.join(formsDir, 'lookup-select.component.ts'),
+      relativePath: formsDir('lookup-select.component.ts'),
       contents: renderLookupSelect(),
       writeMode: 'ifMissing',
     },
     {
-      relativePath: path.join(formsDir, 'multi-lookup-select.component.ts'),
+      relativePath: formsDir('multi-lookup-select.component.ts'),
       contents: renderMultiLookupSelect(),
       writeMode: 'ifMissing',
     },
     {
-      relativePath: path.join(formsDir, 'enum-select.component.ts'),
+      relativePath: formsDir('enum-select.component.ts'),
       contents: renderEnumSelect(),
       writeMode: 'ifMissing',
     },
     {
-      relativePath: path.join(formsDir, 'file-upload-field.component.ts'),
+      relativePath: formsDir('file-upload-field.component.ts'),
       contents: renderFileUploadField(),
       writeMode: 'ifMissing',
     },
     {
-      relativePath: path.join(formsDir, 'image-upload-field.component.ts'),
+      relativePath: formsDir('image-upload-field.component.ts'),
       contents: renderImageUploadField(),
       writeMode: 'ifMissing',
     },

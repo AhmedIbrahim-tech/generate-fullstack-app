@@ -15,6 +15,7 @@ import {
   buildAngularDashboardNav,
 } from './angular/angular-registries.js';
 import { planSharedAngularControls } from './angular/shared-controls.generator.js';
+import { getFrontendFilePath } from '../../utils/project-paths.js';
 
 /**
  * @param {object} config
@@ -31,7 +32,7 @@ export async function planFrontendFeature(config) {
   const registryUpdates = [];
 
   if (strategy.library === 'react') {
-    files.push(...planSharedReactControls());
+    files.push(...planSharedReactControls(config));
     files.push(...planReactModuleFiles(config));
 
     if (strategy.framework === 'next') {
@@ -41,20 +42,20 @@ export async function planFrontendFeature(config) {
     if (strategy.framework === 'vite') {
       files.push(...planViteFeatureFiles(config));
       registryUpdates.push({
-        relativePath: path.join('Client', 'src', 'app', 'router', 'generated-routes.tsx'),
+        relativePath: getFrontendFilePath(config, 'src', 'app', 'router', 'generated-routes.tsx'),
         update: (existing) => buildViteRouteRegistryUpdate(config, existing),
       });
     }
 
     registryUpdates.push({
-      relativePath: path.join('Client', 'src', 'store', 'generated-reducers.ts'),
+      relativePath: getFrontendFilePath(config, 'src', 'store', 'generated-reducers.ts'),
       update: (existing) => buildGeneratedReducers(config, existing),
     });
 
     if (config.surface.dashboard) {
       registryUpdates.push({
-        relativePath: path.join(
-          'Client',
+        relativePath: getFrontendFilePath(
+          config,
           'src',
           'navigation',
           'generated-dashboard-nav.ts',
@@ -65,18 +66,18 @@ export async function planFrontendFeature(config) {
   }
 
   if (strategy.library === 'angular') {
-    files.push(...planSharedAngularControls());
+    files.push(...planSharedAngularControls(config));
     files.push(...planAngularFeatureFiles(config));
 
     registryUpdates.push({
-      relativePath: path.join('Client', 'src', 'app', 'router', 'generated-routes.ts'),
+      relativePath: getFrontendFilePath(config, 'src', 'app', 'router', 'generated-routes.ts'),
       update: (existing) => buildAngularGeneratedRoutes(config, existing).contents,
     });
 
     if (config.surface.dashboard) {
       registryUpdates.push({
-        relativePath: path.join(
-          'Client',
+        relativePath: getFrontendFilePath(
+          config,
           'src',
           'app',
           'navigation',
@@ -98,11 +99,11 @@ export function frontendConflictPaths(config) {
   const { kebabPlural } = config.feature;
 
   if (strategy.library === 'react') {
-    return [`Client/src/modules/${kebabPlural}`];
+    return [getFrontendFilePath(config, 'src', 'modules', kebabPlural)];
   }
 
   if (strategy.library === 'angular') {
-    return [`Client/src/app/features/${kebabPlural}`];
+    return [getFrontendFilePath(config, 'src', 'app', 'features', kebabPlural)];
   }
 
   return [];

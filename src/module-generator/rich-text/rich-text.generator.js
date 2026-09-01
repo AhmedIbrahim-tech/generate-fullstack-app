@@ -185,7 +185,7 @@ public sealed class ContentDocumentProcessor : IContentDocumentProcessor
 
   if (isReact(config)) {
     files.push({
-      relativePath: path.join('Client', 'src', 'shared', 'components', 'rich-text', 'RichTextRenderer.tsx'),
+      relativePath: paths.client('shared', 'components', 'rich-text', 'RichTextRenderer.tsx'),
       writeMode: 'ifMissing',
       contents: `"use client";
 
@@ -258,7 +258,7 @@ export function RichTextRenderer({ documentJson }: { documentJson: string }) {
     });
 
     files.push({
-      relativePath: path.join('Client', 'src', 'shared', 'components', 'rich-text', 'RichTextEditor.tsx'),
+      relativePath: paths.client('shared', 'components', 'rich-text', 'RichTextEditor.tsx'),
       writeMode: 'ifMissing',
       contents: `"use client";
 
@@ -307,9 +307,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
 
   if (isAngular(config)) {
     files.push({
-      relativePath: path.join(
-        'Client',
-        'src',
+      relativePath: paths.client(
         'app',
         'shared',
         'components',

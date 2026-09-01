@@ -3,6 +3,8 @@ export const RESERVED_FEATURE_NAMES = new Set([
   'Application',
   'Domain',
   'Infrastructure',
+  'Backend',
+  'Frontend',
   'Client',
   'Common',
   'Shared',

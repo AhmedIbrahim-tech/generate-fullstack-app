@@ -1,41 +1,48 @@
-# Full-stack app generator
+# create-fullstack-app
 
-A reusable project + feature + **application module** generator for a **.NET Clean Architecture** API plus a choice of frontend:
+A flexible, production-grade project, feature, and application module generator for **ASP.NET Core Clean Architecture** backends and modern frontends (**React with Next.js or Vite**, or **Angular**).
 
-- **React + Next.js** (App Router)
-- **React + Vite** (SPA + React Router)
-- **Angular** (standalone + NgRx)
+Supports:
+- **Full Stack** projects (`Backend/` + `Frontend/`)
+- **Backend Only** projects (Clean Architecture at project root)
+- **Frontend Only** projects (Modern SPA / SSR at project root)
+- **Recommended Defaults** for instant zero-friction scaffolding
+- **Custom Architecture decisions** for advanced developers
+- **V4 Application Modules** (Auth, Users, Permissions, Audit, Notifications, Localization, Rich Text, Dashboard)
+- **Feature Generator** with rich type models, relationships, and automatic UI/API generation
 
 Current version: **4.0.0**
+
+---
 
 ## Requirements
 
 - **Node.js** ≥ 20
-- **.NET SDK** (for ASP.NET Core backends)
-- **SQL Server** or **LocalDB** when using `--sql-server`
-- Optional: `dotnet ef` tools for migrations (`dotnet tool install -g dotnet-ef`)
-
-## Commands
-
-| Command | Purpose |
-| --- | --- |
-| `create-fullstack-app` | Scaffold a new full-stack project (V1 / V1.1) |
-| `create-fullstack-feature` | Generate CRUD features (V2 / V3 / V4 field + permission hooks) |
-| `create-fullstack-module` | Opt into production infrastructure modules (V4) |
+- **.NET SDK** ≥ 9.0 (for ASP.NET Core backends)
+- **Database Engine** (SQL Server, PostgreSQL, or SQLite)
+- Optional: `dotnet ef` tools (`dotnet tool install -g dotnet-ef`)
 
 ---
 
-## How to use
+## CLI Commands
 
-### Option A — From GitHub (recommended)
+| Command | Purpose |
+| :--- | :--- |
+| `create-fullstack-app [ProjectName]` | Interactive CLI wizard to scaffold Full Stack, Backend Only, or Frontend Only apps |
+| `create-fullstack-feature [FeatureName]` | Generate end-to-end CRUD features (Domain, Application, API, Frontend) |
+| `create-fullstack-module [ModuleName]` | Opt into production infrastructure modules (Auth, Users, Permissions, etc.) |
 
-Run without cloning:
+---
+
+## Getting Started
+
+### Run with `npx` (No installation needed)
 
 ```bash
 npx github:AhmedIbrahim-tech/create-fullstack-app MyApp
 ```
 
-Install globally from GitHub:
+### Install globally
 
 ```bash
 npm install -g github:AhmedIbrahim-tech/create-fullstack-app
@@ -43,203 +50,294 @@ npm install -g github:AhmedIbrahim-tech/create-fullstack-app
 create-fullstack-app MyApp
 ```
 
-Non-interactive example with V4 modules:
+---
 
-```bash
-npx github:AhmedIbrahim-tech/create-fullstack-app MyApp --yes ^
-  --package-manager npm ^
-  --frontend react --react-framework next ^
-  --auth --users --permissions --audit --notifications --dashboard
+## Project Creation Modes
+
+When running `create-fullstack-app`, the CLI asks:
+
+> **What do you want to create?**
+> 1. Full Stack (Backend + Frontend)
+> 2. Backend Only (.NET Web API)
+> 3. Frontend Only (React / Next.js / Vite / Angular)
+
+The generator only prompts for options relevant to the chosen mode.
+
+### 1. Full Stack Mode
+Generates an isolated backend and frontend structure:
+
+```text
+<ProjectName>/
+├── .fullstack-app.json
+├── README.md
+├── Backend/
+│   ├── API/
+│   ├── Application/
+│   ├── Domain/
+│   ├── Infrastructure/
+│   └── <ProjectName>.slnx
+└── Frontend/
+    ├── package.json
+    ├── src/
+    └── ...
 ```
 
-(On Bash/zsh, use `\` instead of `^`.)
+### 2. Backend Only Mode
+Generates the Clean Architecture solution directly at the project root:
 
-### Option B — Clone locally
-
-```bash
-git clone https://github.com/AhmedIbrahim-tech/create-fullstack-app.git
-cd create-fullstack-app
-npm install
-npm link
+```text
+<ProjectName>/
+├── .fullstack-app.json
+├── README.md
+├── API/
+├── Application/
+├── Domain/
+├── Infrastructure/
+└── <ProjectName>.slnx
 ```
 
-Then from any folder:
+### 3. Frontend Only Mode
+Generates the frontend application directly at the project root:
 
-```bash
-create-fullstack-app MyCommerce
-```
-
-Or without linking:
-
-```bash
-node ./bin/create-fullstack-app.js MyCommerce
-node ./bin/create-fullstack-feature.js Product
-node ./bin/create-fullstack-module.js auth --yes
-```
-
-### Typical workflow
-
-```bash
-# 1) Create the project
-create-fullstack-app MyCommerce
-cd MyCommerce
-
-# 2) (Optional) Add more V4 modules later
-create-fullstack-module auth --yes
-create-fullstack-module users --yes
-create-fullstack-module --status
-
-# 3) Generate a business feature
-create-fullstack-feature Product --yes ^
-  --field "Name:string:required:max=200" ^
-  --field "Price:decimal:required"
-
-# 4) Create EF migration (never auto-updates the database)
-create-fullstack-module auth --migration
-# or:
-dotnet ef migrations add AddProductFeature --project Infrastructure --startup-project API
-dotnet ef database update --project Infrastructure --startup-project API
-```
-
-### Run the generated app
-
-```bash
-# Backend
-cd MyCommerce
-dotnet restore
-dotnet run --project API
-
-# Frontend (separate terminal)
-cd MyCommerce/Client
-npm install
-npm run dev
-```
-
-Default local URLs:
-
-| Frontend | URL |
-| --- | --- |
-| Next.js | http://localhost:3000 |
-| Vite | http://localhost:5173 |
-| Angular | http://localhost:4200 |
-| API | http://localhost:5000 (or launchSettings / `ASPNETCORE_URLS`) |
-
-If auth is enabled, set a JWT signing key for Development/Production:
-
-```bash
-# PowerShell
-$env:Jwt__SigningKey = "development-only-signing-key-change-me-32b"
-
-# Bash
-export Jwt__SigningKey="development-only-signing-key-change-me-32b"
+```text
+<ProjectName>/
+├── .fullstack-app.json
+├── README.md
+├── package.json
+├── src/
+└── ...
 ```
 
 ---
 
-## Supported frontends
+## Recommended Defaults vs Customization
 
-| Frontend | State | HTTP | Forms | Routing |
-| --- | --- | --- | --- | --- |
-| React + Next | Redux Toolkit | Axios + server fetch | RHF + Zod | App Router |
-| React + Vite | Redux Toolkit | Axios | RHF + Zod | React Router |
-| Angular | NgRx | HttpClient | Reactive Forms | Angular Router |
+For each mode, developers can choose:
+- **Recommended Defaults (Fast)**: Pre-configured, battle-tested stack.
+- **Customize Architecture**: Tailor database, ORM, state management, UI libraries, and more.
 
-React async thunks live under `src/modules/<feature>/slices/thunks/` (never a sibling `thunks/` folder).
+### Backend Architecture Options
 
-## V4 — Production application modules
+| Decision | Recommended Default | Customizable Options | CLI Flag |
+| :--- | :--- | :--- | :--- |
+| **Architecture** | CQRS + MediatR | CQRS + MediatR, Application Services | `--architecture <cqrs-mediatr\|services>` |
+| **ORM / Data Access** | Entity Framework Core | EF Core, Dapper, EF Core + Dapper | `--orm <efcore\|dapper\|efcore-dapper>` |
+| **Database** | SQL Server | SQL Server, PostgreSQL, SQLite | `--database <sqlserver\|postgresql\|sqlite>` |
+| **Mapping** | Manual Mapping | Manual, AutoMapper, Mapster | `--mapping <manual\|automapper\|mapster>` |
+| **Authentication** | Identity + JWT | Identity + JWT, Identity Only, None | `--auth-mode <identity-jwt\|identity\|none>` |
+| **Logging** | Serilog | Serilog, Built-in ILogger | `--logging <serilog\|ilogger>` |
+| **Background Jobs** | None | None, Hangfire | `--background-jobs <none\|hangfire>` |
+| **Real-time** | None | None, SignalR | `--realtime <none\|signalr>` |
 
-Opt-in modules (never forced):
+### Frontend Architecture Options
+
+| Decision | Recommended Default | Customizable Options | CLI Flag |
+| :--- | :--- | :--- | :--- |
+| **Library / Framework** | React (Next.js App Router) | React (Next.js), React (Vite), Angular | `--frontend <react\|angular>`, `--react-framework <next\|vite>` |
+| **Language** | TypeScript | TypeScript, JavaScript (React only) | `--language <typescript\|javascript>` |
+| **Styling** | Tailwind CSS | Tailwind CSS, Bootstrap | `--styling <tailwind\|bootstrap>` |
+| **State Management** | Redux Toolkit | Redux Toolkit, Zustand (React), NgRx (Angular), None | `--state <redux\|zustand\|ngrx\|none>` |
+| **HTTP Client** | Axios | Axios, Fetch API, Angular HttpClient | `--http-client <axios\|fetch>` |
+| **Forms & Validation** | React Hook Form + Zod | RHF + Zod, Angular Reactive Forms, None | `--forms <react-hook-form-zod\|reactive-forms\|none>` |
+| **Component System** | shadcn/ui | shadcn/ui, Material UI, Ant Design, None | `--component-system <shadcn\|mui\|antd\|none>` |
+
+---
+
+## Non-Interactive & Automation Flags
+
+Scaffold projects non-interactively using CLI flags:
+
+### Full Stack Example
+```bash
+create-fullstack-app MyApp --yes \
+  --mode fullstack \
+  --database postgresql \
+  --orm efcore \
+  --frontend react \
+  --react-framework next \
+  --styling tailwind \
+  --auth --users --permissions --dashboard
+```
+
+### Backend Only Example
+```bash
+create-fullstack-app MyApi --backend-only --yes \
+  --database postgresql \
+  --architecture cqrs-mediatr \
+  --background-jobs hangfire
+```
+
+### Frontend Only Example
+```bash
+create-fullstack-app MyUi --frontend-only --yes \
+  --frontend react \
+  --react-framework vite \
+  --styling tailwind \
+  --state zustand
+```
+
+### User Preferences
+Save and reuse your preferred choices across projects:
+```bash
+create-fullstack-app MyApp --save-preferences
+create-fullstack-app NextApp --use-preferences --yes
+```
+
+---
+
+## Running Generated Projects
+
+### Full Stack
+```bash
+# Terminal 1: Backend API
+cd MyApp/Backend
+dotnet restore
+dotnet run --project API
+
+# Terminal 2: Frontend App
+cd MyApp/Frontend
+npm install
+npm run dev
+```
+
+### Backend Only
+```bash
+cd MyApi
+dotnet restore
+dotnet run --project API
+```
+
+### Frontend Only
+```bash
+cd MyUi
+npm install
+npm run dev
+```
+
+Default Dev URLs:
+- **Next.js**: `http://localhost:3000`
+- **Vite**: `http://localhost:5173`
+- **Angular**: `http://localhost:4200`
+- **ASP.NET Core API**: `http://localhost:5000` (Swagger at `/swagger`, Health check at `/health`)
+
+---
+
+## Manifest (`.fullstack-app.json`)
+
+The manifest is the single source of truth for all generators, storing exact folder paths and configuration:
+
+```json
+{
+  "projectName": "MyApp",
+  "paths": {
+    "backend": "Backend",
+    "frontend": "Frontend"
+  },
+  "backend": {
+    "enabled": true,
+    "architecture": "cqrs-mediatr",
+    "orm": "efcore",
+    "database": "postgresql",
+    "authentication": "identity-jwt"
+  },
+  "frontend": {
+    "enabled": true,
+    "library": "react",
+    "framework": "next",
+    "language": "typescript",
+    "styling": "tailwind",
+    "state": "redux"
+  },
+  "modules": {
+    "auth": { "enabled": true, "version": "4.0.0" }
+  }
+}
+```
+
+---
+
+## V4 Production Application Modules
+
+Opt-in modules add production-grade features without coupling:
 
 | Module | Depends on | What it generates |
-| --- | --- | --- |
-| `auth` | — | Identity + JWT access tokens (memory) + HttpOnly refresh cookies (hash + rotation) |
-| `users` | auth | Admin user search / create / update / roles |
-| `permissions` | auth | `Feature.Action` permissions + dynamic policies |
-| `audit` | — | Audit trail with sensitive-field redaction |
-| `notifications` | auth | In-app notifications with ownership enforcement |
-| `localization` | — | Domain content languages (`Language`, Accept-Language) |
+| :--- | :--- | :--- |
+| `auth` | — | Identity + JWT access tokens (memory only) + HttpOnly refresh cookies (SHA-256 hash & rotation) |
+| `users` | auth | Admin user search, create, update, role assignments |
+| `permissions` | auth | `Feature.Action` granular permissions & dynamic authorization policies |
+| `audit` | — | Audit trail with automatic sensitive-field redaction |
+| `notifications` | auth | In-app notification center with recipient validation |
+| `localization` | — | Database-driven domain content languages (`Language`, Accept-Language header) |
 | `rich-text` | — | Structured TipTap JSON documents + safe renderer |
-| `dashboard` | — | Shared dashboard UI + widget registry |
+| `dashboard` | — | Admin layout, navigation registry, and dashboard widgets |
 
+### Module CLI Commands
 ```bash
+# List available modules
 create-fullstack-module --list
+
+# Check enabled modules in current project
 create-fullstack-module --status
-create-fullstack-module auth --dry-run
-create-fullstack-module notifications --yes
-create-fullstack-module auth --migration   # creates EF migration only — never runs database update
+
+# Install module (interactive or with --yes)
+create-fullstack-module auth --yes
+create-fullstack-module users --yes
+
+# Create EF migration for module
+create-fullstack-module auth --migration
 ```
 
-### Authentication security model
-
-| Token | Storage | Notes |
-| --- | --- | --- |
-| Access token | Runtime memory only (Redux / NgRx) | Short-lived JWT. **Never** `localStorage` / `sessionStorage`. |
-| Refresh token | HttpOnly cookie | DB stores **hash only**. Rotation + reuse rejection. **Never** returned in JSON. |
-
-Production requires HTTPS for Secure refresh cookies. Signing key comes from `Jwt__SigningKey` (never commit a production secret).
-
-### Project creation flags (V4)
-
-```bash
-create-fullstack-app MyApp --yes ^
-  --frontend react --react-framework next ^
-  --auth --users --permissions --audit --notifications --dashboard
-```
-
-Also available: `--domain-localization`, `--rich-text`.
-
-Interactive creation asks Authentication / Users / Permissions / Audit / Notifications / Localization / Rich text / Dashboard as opt-in prompts.
-
-Manifest (`.fullstack-app.json`) is authoritative for module enablement.
+---
 
 ## Feature Generator
 
-`create-fullstack-feature` reads `.fullstack-app.json` and chooses the correct React+Next, React+Vite, or Angular strategy.
+Generate complete end-to-end CRUD features adhering to Clean Architecture and your chosen frontend stack.
 
-### Field kinds
+### Field Types & Modifiers
 
-| Kind | Examples |
-| --- | --- |
-| Scalar | string, int, long, decimal, double, boolean, Guid, DateTime, DateTimeOffset |
-| Rich text (V4) | `Content:richText:required` → structured JSON document |
-| Enum | `ProductStatus: Draft, Active, Archived` |
-| Relationship | many-to-one, one-to-many, one-to-one, many-to-many |
-| File / Image | single or multiple via `IFileStorageService` |
+| Field Kind | Syntax Example | Notes |
+| :--- | :--- | :--- |
+| **Scalar** | `Name:string:required:max=200`<br>`Price:decimal:required:min=0` | string, int, long, decimal, double, boolean, Guid, DateTime, DateTimeOffset |
+| **Enum** | `Status:enum:name=ProductStatus:values=Draft\|Active\|Archived:required` | Strongly-typed C# enum + TypeScript union |
+| **Relationship** | `Category:relationship:target=Category:type=many-to-one:required:display=Name`<br>`Tags:relationship:target=Tag:type=many-to-many:display=Name` | Creates Foreign Keys, Navigation Properties, EF configurations, and UI Select dropdowns |
+| **File / Image** | `Avatar:image:required`<br>`Document:file` | Multipart file upload integration via `IFileStorageService` |
+| **Rich Text** | `Content:richText:required` | TipTap structured JSON editor and renderer |
 
-When the permissions module is enabled, `--permissions` registers `Products.View|Create|Update|Delete|Restore` in the generator-owned registry.
-
-### Example: Product
+### Feature Generation Example
 
 ```bash
+# 1. Create related features
 create-fullstack-feature Category --yes --field "Name:string:required:max=150"
 create-fullstack-feature Tag --yes --field "Name:string:required:max=100"
-create-fullstack-feature Product --yes --surface both ^
-  --field "Name:string:required:max=200" ^
-  --field "Price:decimal:required:min=0" ^
-  --field "Category:relationship:target=Category:type=many-to-one:required:display=Name" ^
-  --field "Tags:relationship:target=Tag:type=many-to-many:display=Name" ^
-  --field "Status:enum:name=ProductStatus:values=Draft|Active|Archived:required"
+
+# 2. Create main feature with relationships
+create-fullstack-feature Product --yes --surface both \
+  --field "Name:string:required:max=200" \
+  --field "Price:decimal:required:min=0" \
+  --field "Category:relationship:target=Category:type=many-to-one:required:display=Name" \
+  --field "Tags:relationship:target=Tag:type=many-to-many:display=Name" \
+  --field "Status:enum:name=ProductStatus:values=Draft|Active|Archived:required" \
+  --field "Image:image" \
+  --field "Description:richText"
 ```
 
-## Architecture guarantees
+---
 
-- Clean Architecture + CQRS (MediatR), FluentValidation, Result → ProblemDetails
-- `IApplicationDbContext` (no Generic Repository)
-- Soft delete + restore + RowVersion
-- React: modules with `slices/thunks/`
-- Angular: NgRx + HttpClient + Reactive Forms + guards
-- Domain localization ≠ UI localization
-
-## Scripts
+## Development & Testing
 
 ```bash
+# Run unit & integration test suites
+npm test
+
+# Run syntax linter
 npm run lint
-npm run test:unit
+
+# Run end-to-end smoke tests
 npm run smoke
-npm run smoke:v3
-npm run smoke:v4
 ```
 
-## Out of scope (V5+)
+---
 
-OAuth social login, 2FA, passkeys, SignalR real-time notifications, SMTP providers, SMS, multi-tenancy, billing, Redis, message brokers, Docker/K8s automation, GraphQL, microservices.
+## License
+
+MIT © [Ahmed Ibrahim](https://github.com/AhmedIbrahim-tech)

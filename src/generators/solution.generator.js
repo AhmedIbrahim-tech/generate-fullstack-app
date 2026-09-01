@@ -3,9 +3,13 @@ import { runCommand, runCommandCapture } from '../utils/command.js';
 import { logger } from '../utils/logger.js';
 
 /**
- * @param {{ pascalName: string, targetDirectory: string }} options
+ * @param {{ pascalName: string, targetDirectory: string, backendDirectory?: string, paths?: { backend?: string } }} options
  */
 export async function generateSolution(options) {
+  const backendDir = options.backendDirectory ?? (options.paths?.backend
+    ? (options.paths.backend === '.' ? options.targetDirectory : path.join(options.targetDirectory, options.paths.backend))
+    : options.targetDirectory);
+
   const slnFile = `${options.pascalName}.slnx`;
   const projects = [
     path.join('API', 'API.csproj'),
@@ -15,12 +19,12 @@ export async function generateSolution(options) {
   ];
 
   runCommand('dotnet', ['new', 'sln', '--name', options.pascalName, '--format', 'slnx', '--force'], {
-    cwd: options.targetDirectory,
+    cwd: backendDir,
     step: 'Create solution',
   });
 
   const listed = runCommandCapture('dotnet', ['sln', slnFile, 'list'], {
-    cwd: options.targetDirectory,
+    cwd: backendDir,
     step: 'List solution projects',
   });
   const listedText = `${listed.stdout ?? ''}\n${listed.stderr ?? ''}`.replaceAll('\\', '/');
@@ -28,7 +32,7 @@ export async function generateSolution(options) {
 
   if (missing.length > 0) {
     runCommand('dotnet', ['sln', slnFile, 'add', ...missing], {
-      cwd: options.targetDirectory,
+      cwd: backendDir,
       step: 'Add projects to solution',
     });
   }

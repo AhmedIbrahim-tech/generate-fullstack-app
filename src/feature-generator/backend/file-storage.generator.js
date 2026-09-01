@@ -1,4 +1,4 @@
-import path from 'node:path';
+import { getBackendFilePath } from '../../utils/project-paths.js';
 
 export const DEFAULT_MAX_UPLOAD_BYTES = 52428800; // 50 MB
 
@@ -8,95 +8,37 @@ export const DEFAULT_MAX_UPLOAD_BYTES = 52428800; // 50 MB
  * uses `writeMode: 'ifMissing'` and will never overwrite existing code.
  *
  * @param {string} projectName - root namespace of the backend project
+ * @param {object} [config]
  * @returns {{ relativePath: string, contents: string, writeMode: string }[]}
  */
-export function planFileStorageInfrastructure(projectName) {
+export function planFileStorageInfrastructure(projectName, config = {}) {
   const ns = projectName;
 
   /** @param {string} contents */
-  const infra = (relativePath, contents) => ({
-    relativePath,
+  const infra = (projectFolder, segments, contents) => ({
+    relativePath: getBackendFilePath(config, projectFolder, ...segments),
     contents,
     writeMode: 'ifMissing',
   });
 
   return [
-    infra(
-      path.join('Domain', 'Entities', 'StoredFile.cs'),
-      renderStoredFileEntity(ns),
-    ),
-    infra(
-      path.join('Application', 'Abstractions', 'Storage', 'IFileStorageService.cs'),
-      renderStorageAbstraction(ns),
-    ),
-    infra(
-      path.join(
-        'Application',
-        'Abstractions',
-        'Persistence',
-        'IApplicationDbContext.Files.g.cs',
-      ),
-      renderDbContextInterface(ns),
-    ),
-    infra(
-      path.join('Application', 'Features', 'Files', 'Common', 'StoredFileDto.cs'),
-      renderStoredFileDto(ns),
-    ),
-    infra(
-      path.join('Application', 'Features', 'Files', 'Upload', 'UploadFileCommand.cs'),
-      renderUploadCommand(ns),
-    ),
-    infra(
-      path.join(
-        'Application',
-        'Features',
-        'Files',
-        'Upload',
-        'UploadFileCommandHandler.cs',
-      ),
-      renderUploadHandler(ns),
-    ),
-    infra(
-      path.join('Infrastructure', 'Storage', 'LocalFileStorageService.cs'),
-      renderLocalStorageService(ns),
-    ),
-    infra(
-      path.join('Infrastructure', 'Storage', 'FileStorageRegistration.cs'),
-      renderStorageRegistration(ns),
-    ),
+    infra('Domain', ['Entities', 'StoredFile.cs'], renderStoredFileEntity(ns)),
+    infra('Application', ['Abstractions', 'Storage', 'IFileStorageService.cs'], renderStorageAbstraction(ns)),
+    infra('Application', ['Abstractions', 'Persistence', 'IApplicationDbContext.Files.g.cs'], renderDbContextInterface(ns)),
+    infra('Application', ['Features', 'Files', 'Common', 'StoredFileDto.cs'], renderStoredFileDto(ns)),
+    infra('Application', ['Features', 'Files', 'Upload', 'UploadFileCommand.cs'], renderUploadCommand(ns)),
+    infra('Application', ['Features', 'Files', 'Upload', 'UploadFileCommandHandler.cs'], renderUploadHandler(ns)),
+    infra('Infrastructure', ['Storage', 'LocalFileStorageService.cs'], renderLocalStorageService(ns)),
+    infra('Infrastructure', ['Storage', 'FileStorageRegistration.cs'], renderStorageRegistration(ns)),
     {
-      relativePath: path.join(
-        'Infrastructure',
-        'DependencyInjection.Generated.g.cs',
-      ),
+      relativePath: getBackendFilePath(config, 'Infrastructure', 'DependencyInjection.Generated.g.cs'),
       contents: renderGeneratedDi(ns),
       writeMode: 'replace',
     },
-    infra(
-      path.join(
-        'Infrastructure',
-        'Persistence',
-        'ApplicationDbContext.Files.g.cs',
-      ),
-      renderDbContextImplementation(ns),
-    ),
-    infra(
-      path.join(
-        'Infrastructure',
-        'Persistence',
-        'Configurations',
-        'StoredFileConfiguration.cs',
-      ),
-      renderStoredFileConfiguration(ns),
-    ),
-    infra(
-      path.join('API', 'Routing', 'Router.Files.g.cs'),
-      renderRouter(ns),
-    ),
-    infra(
-      path.join('API', 'Controllers', 'FilesController.cs'),
-      renderFilesController(ns),
-    ),
+    infra('Infrastructure', ['Persistence', 'ApplicationDbContext.Files.g.cs'], renderDbContextImplementation(ns)),
+    infra('Infrastructure', ['Persistence', 'Configurations', 'StoredFileConfiguration.cs'], renderStoredFileConfiguration(ns)),
+    infra('API', ['Routing', 'Router.Files.g.cs'], renderRouter(ns)),
+    infra('API', ['Controllers', 'FilesController.cs'], renderFilesController(ns)),
   ];
 }
 

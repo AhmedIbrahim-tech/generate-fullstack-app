@@ -1,10 +1,10 @@
-import path from 'node:path';
 import {
   toCSharpType,
   csharpDefaultInitializer,
   groupFields,
 } from '../fields/field-mappers.js';
 import { planEnumFiles } from './enum.generator.js';
+import { getBackendFilePath } from '../../utils/project-paths.js';
 
 /**
  * @param {object} config
@@ -17,7 +17,7 @@ export function planDomainFiles(config) {
   /** @type {{ relativePath: string, contents: string, writeMode?: string, conflict?: object }[]} */
   const files = [
     {
-      relativePath: path.join('Domain', 'Entities', `${singularName}.cs`),
+      relativePath: getBackendFilePath(config, 'Domain', 'Entities', `${singularName}.cs`),
       contents: renderEntity(config, groups),
     },
   ];
@@ -30,7 +30,8 @@ export function planDomainFiles(config) {
 
   if (hasNavigations) {
     files.push({
-      relativePath: path.join(
+      relativePath: getBackendFilePath(
+        config,
         'Domain',
         'Entities',
         'Generated',

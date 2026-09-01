@@ -19,7 +19,7 @@ export function planDashboardModule(config) {
 
   if (isReact(config)) {
     const shared = (...segments) =>
-      path.join('Client', 'src', 'shared', 'components', 'dashboard', ...segments);
+      paths.client('shared', 'components', 'dashboard', ...segments);
 
     files.push({
       relativePath: shared('PageHeader.tsx'),
@@ -96,7 +96,7 @@ export function planDashboardModule(config) {
     });
 
     files.push({
-      relativePath: path.join('Client', 'src', 'navigation', 'generated-dashboard-widgets.ts'),
+      relativePath: paths.client('navigation', 'generated-dashboard-widgets.ts'),
       writeMode: 'ifMissing',
       contents: `${AUTO_HEADER_TS}
 
@@ -112,7 +112,7 @@ export const generatedDashboardWidgets: DashboardWidget[] = [];
     });
 
     files.push({
-      relativePath: path.join('Client', 'src', 'app', 'pages', 'DashboardOverviewPage.tsx'),
+      relativePath: paths.client('app', 'pages', 'DashboardOverviewPage.tsx'),
       writeMode: 'ifMissing',
       contents: `"use client";
 
@@ -157,9 +157,7 @@ export default function DashboardOverviewPage() {
 
   if (isAngular(config)) {
     files.push({
-      relativePath: path.join(
-        'Client',
-        'src',
+      relativePath: paths.client(
         'app',
         'shared',
         'components',

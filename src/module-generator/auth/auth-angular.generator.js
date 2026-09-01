@@ -1,4 +1,4 @@
-import path from 'node:path';
+import { paths } from '../modules-orchestrator-helpers.js';
 
 /**
  * V4 Authentication — Angular module generator.
@@ -24,35 +24,35 @@ import path from 'node:path';
  */
 export function planAuthAngularModule(config) {
   void config;
-  const coreBase = path.join('Client', 'src', 'app', 'core', 'auth');
-  const authFeatureBase = path.join('Client', 'src', 'app', 'features', 'auth');
+  const coreBase = (...segments) => paths.client('app', 'core', 'auth', ...segments);
+  const authFeatureBase = (...segments) => paths.angularFeature('auth', ...segments);
 
   /** @type {{ relativePath: string, contents: string, writeMode?: string }[]} */
   const files = [
-    { relativePath: path.join(coreBase, 'auth.models.ts'), contents: renderModels() },
-    { relativePath: path.join(coreBase, 'refresh-client.ts'), contents: renderRefreshClient() },
-    { relativePath: path.join(coreBase, 'auth.service.ts'), contents: renderService() },
-    { relativePath: path.join(coreBase, 'auth.token-store.ts'), contents: renderTokenStore() },
-    { relativePath: path.join(coreBase, 'auth.state.ts'), contents: renderState() },
-    { relativePath: path.join(coreBase, 'auth.actions.ts'), contents: renderActions() },
-    { relativePath: path.join(coreBase, 'auth.reducer.ts'), contents: renderReducer() },
-    { relativePath: path.join(coreBase, 'auth.effects.ts'), contents: renderEffects() },
-    { relativePath: path.join(coreBase, 'auth.selectors.ts'), contents: renderSelectors() },
+    { relativePath: coreBase('auth.models.ts'), contents: renderModels() },
+    { relativePath: coreBase('refresh-client.ts'), contents: renderRefreshClient() },
+    { relativePath: coreBase('auth.service.ts'), contents: renderService() },
+    { relativePath: coreBase('auth.token-store.ts'), contents: renderTokenStore() },
+    { relativePath: coreBase('auth.state.ts'), contents: renderState() },
+    { relativePath: coreBase('auth.actions.ts'), contents: renderActions() },
+    { relativePath: coreBase('auth.reducer.ts'), contents: renderReducer() },
+    { relativePath: coreBase('auth.effects.ts'), contents: renderEffects() },
+    { relativePath: coreBase('auth.selectors.ts'), contents: renderSelectors() },
     {
-      relativePath: path.join(coreBase, 'auth.refresh-coordinator.ts'),
+      relativePath: coreBase('auth.refresh-coordinator.ts'),
       contents: renderRefreshCoordinator(),
     },
-    { relativePath: path.join(coreBase, 'auth.interceptor.ts'), contents: renderInterceptor() },
-    { relativePath: path.join(coreBase, 'auth.guard.ts'), contents: renderAuthGuard() },
-    { relativePath: path.join(coreBase, 'permission.guard.ts'), contents: renderPermissionGuard() },
-    { relativePath: path.join(coreBase, 'auth.providers.ts'), contents: renderProviders() },
+    { relativePath: coreBase('auth.interceptor.ts'), contents: renderInterceptor() },
+    { relativePath: coreBase('auth.guard.ts'), contents: renderAuthGuard() },
+    { relativePath: coreBase('permission.guard.ts'), contents: renderPermissionGuard() },
+    { relativePath: coreBase('auth.providers.ts'), contents: renderProviders() },
     {
-      relativePath: path.join(authFeatureBase, 'login.page.ts'),
+      relativePath: authFeatureBase('login.page.ts'),
       contents: renderLoginPage(),
       writeMode: 'replace',
     },
     {
-      relativePath: path.join(authFeatureBase, 'register.page.ts'),
+      relativePath: authFeatureBase('register.page.ts'),
       contents: renderRegisterPage(),
       writeMode: 'replace',
     },
@@ -61,11 +61,11 @@ export function planAuthAngularModule(config) {
   /** @type {{ relativePath: string, update: (existing: string) => string }[]} */
   const registryUpdates = [
     {
-      relativePath: path.join('Client', 'src', 'app', 'app.config.ts'),
+      relativePath: paths.client('app', 'app.config.ts'),
       update: (existing) => buildAngularAppConfigUpdate(existing),
     },
     {
-      relativePath: path.join('Client', 'src', 'app', 'app.routes.ts'),
+      relativePath: paths.client('app', 'app.routes.ts'),
       update: (existing) => buildAngularRoutesGuardUpdate(existing),
     },
   ];

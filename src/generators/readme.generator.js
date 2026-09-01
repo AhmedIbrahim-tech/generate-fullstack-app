@@ -3,6 +3,7 @@ import { writeFile } from '../utils/filesystem.js';
 import { describeFrontend } from '../models/frontend.js';
 import { describeBackend } from '../models/backend.js';
 import { readPackageMeta } from '../cli/arguments.js';
+import { resolveProjectPaths } from '../utils/project-paths.js';
 
 /**
  * @param {object} options
@@ -16,12 +17,19 @@ export async function writeGeneratedReadme(options) {
     ? (typeof options.backend === 'object' ? options.backend : { enabled: true })
     : { enabled: false };
 
+  const paths = options.paths ?? resolveProjectPaths({
+    backend,
+    frontend,
+  });
+
   const sections = [];
 
   sections.push(`# ${options.displayName}`, '', `Generated with create-fullstack-app.`, '');
 
   sections.push('## Project Architecture', '');
   if (backend.enabled) {
+    const isBackendNested = paths.backend === 'Backend';
+    const prefix = isBackendNested ? 'Backend/' : '';
     sections.push(
       '### Backend (ASP.NET Core Web API)',
       `- **Architecture**: Clean Architecture (${backend.architecture === 'services' ? 'Application Services' : 'CQRS + MediatR'})`,
@@ -33,16 +41,18 @@ export async function writeGeneratedReadme(options) {
       backend.backgroundJobs === 'hangfire' ? '- **Background Jobs**: Hangfire Dashboard (`/hangfire`)' : '',
       '',
       'Folder structure:',
-      '- `API/` — ASP.NET Core host, controllers, middleware, hubs',
-      '- `Application/` — use cases, commands, queries, validation, result types',
-      '- `Domain/` — entities, domain events, common types',
-      '- `Infrastructure/` — persistence, database contexts/factories, authentication',
-      `- \`${options.pascalName}.slnx\` — solution file`,
+      `- \`${prefix}API/\` — ASP.NET Core host, controllers, middleware, hubs`,
+      `- \`${prefix}Application/\` — use cases, commands, queries, validation, result types`,
+      `- \`${prefix}Domain/\` — entities, domain events, common types`,
+      `- \`${prefix}Infrastructure/\` — persistence, database contexts/factories, authentication`,
+      `- \`${prefix}${options.pascalName}.slnx\` — solution file`,
       '',
     );
   }
 
   if (frontend.enabled) {
+    const isFrontendNested = paths.frontend === 'Frontend';
+    const prefix = isFrontendNested ? 'Frontend/' : '';
     sections.push(
       `### Frontend (${describeFrontend(frontend)})`,
       `- **Language**: ${frontend.language === 'javascript' ? 'JavaScript' : 'TypeScript'}`,
@@ -53,6 +63,8 @@ export async function writeGeneratedReadme(options) {
       `- **Component System**: ${frontend.componentSystem === 'shadcn' ? 'shadcn/ui' : frontend.componentSystem === 'mui' ? 'Material UI' : frontend.componentSystem === 'antd' ? 'Ant Design' : 'None'}`,
       `- **Layout Foundations**: Auth Layout (\`/login\`, \`/register\`, \`/forgot-password\`), Dashboard Layout (\`/dashboard\`), Website Layout (\`/\`)`,
       frontend.realtime === 'signalr' ? '- **Real Time**: SignalR Client Connection Hook / Service' : '',
+      '',
+      isFrontendNested ? `- \`${prefix}\` — Frontend application root` : `- Frontend files live at the project root`,
       '',
     );
   }
@@ -71,10 +83,12 @@ export async function writeGeneratedReadme(options) {
   sections.push('');
 
   if (backend.enabled) {
+    const isBackendNested = paths.backend === 'Backend';
     sections.push(
       '## Run the Backend API',
       '',
       '```bash',
+      isBackendNested ? 'cd Backend' : '',
       'dotnet restore',
       'dotnet build',
       'dotnet run --project API',
@@ -87,11 +101,12 @@ export async function writeGeneratedReadme(options) {
   }
 
   if (frontend.enabled) {
+    const isFrontendNested = paths.frontend === 'Frontend';
     sections.push(
       '## Run the Frontend Client',
       '',
       '```bash',
-      'cd Client',
+      isFrontendNested ? 'cd Frontend' : '',
       installCmd,
       devCmd,
       '```',
@@ -104,6 +119,6 @@ export async function writeGeneratedReadme(options) {
 
   await writeFile(
     path.join(options.targetDirectory, 'README.md'),
-    sections.filter((line) => line !== undefined).join('\n'),
+    sections.filter((line) => line !== undefined && line !== '').join('\n') + '\n',
   );
 }
