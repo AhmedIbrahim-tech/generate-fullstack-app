@@ -1,5 +1,9 @@
 # create-fullstack-app
 
+<p align="center">
+  <img src="hero.png" alt="create-fullstack-app hero: generate production-ready full stack, backend-only, or frontend-only apps" width="100%" />
+</p>
+
 A flexible, production-grade project, feature, and application module generator for **ASP.NET Core Clean Architecture** backends and modern frontends (**React with Next.js or Vite**, or **Angular**).
 
 Supports:
@@ -53,6 +57,12 @@ create-fullstack-app MyApp
 ---
 
 ## Project Creation Modes
+
+Configure the stack visually, then generate with the CLI. The interactive builder enforces compatible choices across .NET, frontend frameworks, state libraries, and UI systems:
+
+<p align="center">
+  <img src="Builder.png" alt="Interactive stack builder: project mode, architecture preview, and .fullstack-app.json output" width="100%" />
+</p>
 
 When running `create-fullstack-app`, the CLI asks:
 
