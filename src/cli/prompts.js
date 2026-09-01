@@ -4,7 +4,7 @@ import { printGenerationSummary, printRecommendedDefaultsSummary } from './summa
 import { validateProjectName, validatePackageManager } from '../utils/validation.js';
 import { GenerationError } from '../utils/errors.js';
 import { defaultFrontendSelection, resolveFrontendSelection } from '../models/frontend.js';
-import { defaultBackendSelection } from '../models/backend.js';
+import { defaultBackendSelection, assertBackendCompatibility } from '../models/backend.js';
 import { loadUserPreferences, saveUserPreferences } from '../utils/user-preferences.js';
 
 /**
@@ -128,6 +128,10 @@ export async function resolveOptions(parsed) {
     roles: ['Admin', 'Editor', 'User'],
     saveDefaults: parsed.saveDefaults,
   };
+
+  if (options.backend?.enabled) {
+    assertBackendCompatibility(options.backend);
+  }
 
   // Final confirmation summary before generation
   if (!parsed.yes) {
@@ -327,11 +331,15 @@ async function resolveCustomBackend(parsed) {
 
   const authentication = parsed.authMode ?? (await select({
     message: 'Authentication:',
-    choices: [
-      { name: 'ASP.NET Core Identity + JWT (Full auth tokens, roles & refresh cookies)', value: 'identity-jwt' },
-      { name: 'ASP.NET Core Identity (Identity cookie & password management only)', value: 'identity' },
-      { name: 'None (Public API without authentication foundation)', value: 'none' },
-    ],
+    choices: orm === 'dapper'
+      ? [
+          { name: 'None (ASP.NET Identity requires EF Core; use EF Core or EF Core + Dapper)', value: 'none' },
+        ]
+      : [
+          { name: 'ASP.NET Core Identity + JWT (Full auth tokens, roles & refresh cookies)', value: 'identity-jwt' },
+          { name: 'ASP.NET Core Identity (Identity cookie & password management only)', value: 'identity' },
+          { name: 'None (Public API without authentication foundation)', value: 'none' },
+        ],
   }));
 
   return {

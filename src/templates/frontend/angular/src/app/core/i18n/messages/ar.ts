@@ -1,4 +1,6 @@
 export const ar = {
-  "home.title": "مرحباً بك في __DISPLAY_NAME__",
-  "home.description": "قالب عام لتطبيقات الويب كاملة المكدس.",
+  "home.title": "أساس احترافي للمنتج الذي ستبنيه.",
+  "home.description": "موقع عام، ولوحة تحكم، وعميل واجهة برمجة تطبيقات جاهز — كتطبيق متماسك وليس كشاشة بداية.",
+  "home.ctaPrimary": "فتح لوحة التحكم",
+  "home.ctaSecondary": "تسجيل الدخول",
 };

@@ -7,6 +7,7 @@ import { parseArguments } from '../src/cli/arguments.js';
 import { resolveFrontendSelection } from '../src/models/frontend.js';
 import { validateProjectName } from '../src/utils/validation.js';
 import { run } from '../src/utils/package-manager.js';
+import { loadProjectLayout, backendFile, frontendFile } from './smoke-paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const generatorRoot = path.resolve(__dirname, '..');
@@ -84,19 +85,18 @@ function generate(projectName, extraArgs, outputDir) {
   );
 }
 
-async function assertBackend(projectDir) {
-  const name = path.basename(projectDir);
-  await assertExists(path.join(projectDir, `${name}.slnx`), `${name} solution`);
-  await assertMissing(path.join(projectDir, 'Backend'), `${name} has no Backend parent`);
-  await assertExists(path.join(projectDir, 'API', 'API.csproj'), `${name} API`);
-  await assertExists(path.join(projectDir, 'Application', 'Application.csproj'), `${name} Application`);
-  await assertExists(path.join(projectDir, 'Domain', 'Domain.csproj'), `${name} Domain`);
-  await assertExists(path.join(projectDir, 'Infrastructure', 'Infrastructure.csproj'), `${name} Infrastructure`);
+async function assertBackend(layout) {
+  const name = path.basename(layout.projectRoot);
+  await assertExists(backendFile(layout, `${name}.slnx`), `${name} solution`);
+  await assertExists(backendFile(layout, 'API', 'API.csproj'), `${name} API`);
+  await assertExists(backendFile(layout, 'Application', 'Application.csproj'), `${name} Application`);
+  await assertExists(backendFile(layout, 'Domain', 'Domain.csproj'), `${name} Domain`);
+  await assertExists(backendFile(layout, 'Infrastructure', 'Infrastructure.csproj'), `${name} Infrastructure`);
 
-  const applicationCsproj = await readText(path.join(projectDir, 'Application', 'Application.csproj'));
-  const infrastructureCsproj = await readText(path.join(projectDir, 'Infrastructure', 'Infrastructure.csproj'));
-  const apiCsproj = await readText(path.join(projectDir, 'API', 'API.csproj'));
-  const domainCsproj = await readText(path.join(projectDir, 'Domain', 'Domain.csproj'));
+  const applicationCsproj = await readText(backendFile(layout, 'Application', 'Application.csproj'));
+  const infrastructureCsproj = await readText(backendFile(layout, 'Infrastructure', 'Infrastructure.csproj'));
+  const apiCsproj = await readText(backendFile(layout, 'API', 'API.csproj'));
+  const domainCsproj = await readText(backendFile(layout, 'Domain', 'Domain.csproj'));
 
   if (!applicationCsproj.includes('Domain.csproj')) {
     throw new Error(`${name}: Application must reference Domain`);
@@ -114,7 +114,7 @@ async function assertBackend(projectDir) {
 
   process.stdout.write(`i ${name}: dotnet build\n`);
   runCommand('dotnet', ['build', `${name}.slnx`, '--nologo'], {
-    cwd: projectDir,
+    cwd: layout.backendDir,
     step: `${name} dotnet build`,
   });
   pass(`${name} backend build`);
@@ -189,87 +189,90 @@ async function main() {
     if (!skipNext) {
     generate('SmokeReactNext', ['--frontend', 'react', '--react-framework', 'next'], tempRoot);
     const nextDir = path.join(tempRoot, 'SmokeReactNext');
-    await assertBackend(nextDir);
-    await assertExists(path.join(nextDir, 'Client'), 'Next Client');
-    await assertExists(path.join(nextDir, 'Client', 'src', 'app'), 'Next App Router');
+    const nextLayout = await loadProjectLayout(nextDir);
+    await assertBackend(nextLayout);
+    await assertExists(nextLayout.frontendDir, 'Next Frontend');
+    await assertExists(frontendFile(nextLayout, 'src', 'app'), 'Next App Router');
     await assertExists(
-      path.join(nextDir, 'Client', 'src', 'modules', 'example', 'slices', 'thunks'),
+      frontendFile(nextLayout, 'src', 'modules', 'example', 'slices', 'thunks'),
       'Next slices/thunks',
     );
     await assertMissing(
-      path.join(nextDir, 'Client', 'src', 'modules', 'example', 'thunks'),
+      frontendFile(nextLayout, 'src', 'modules', 'example', 'thunks'),
       'Next sibling thunks absent',
     );
-    await assertExists(path.join(nextDir, 'Client', 'src', 'lib', 'api', 'server-api.ts'), 'Next server-api');
-    await assertExists(path.join(nextDir, 'Client', 'src', 'store', 'store.ts'), 'Next Redux store');
-    await assertExists(path.join(nextDir, 'Client', 'src', 'i18n', 'request.ts'), 'next-intl foundation');
-    const nextPkg = await readJson(path.join(nextDir, 'Client', 'package.json'));
+    await assertExists(frontendFile(nextLayout, 'src', 'lib', 'api', 'server-api.ts'), 'Next server-api');
+    await assertExists(frontendFile(nextLayout, 'src', 'store', 'store.ts'), 'Next Redux store');
+    await assertExists(frontendFile(nextLayout, 'src', 'i18n', 'request.ts'), 'next-intl foundation');
+    const nextPkg = await readJson(frontendFile(nextLayout, 'package.json'));
     assertNoForbiddenDeps(nextPkg, ['@angular/core', '@ngrx/store'], 'React Next');
-    const nextManifest = await readJson(path.join(nextDir, '.fullstack-app.json'));
+    const nextManifest = nextLayout.manifest;
     if (nextManifest.frontend.library !== 'react' || nextManifest.frontend.framework !== 'next') {
       throw new Error('Next manifest is incorrect');
     }
     process.stdout.write('i SmokeReactNext: frontend production build\n');
-    run('npm', 'build', { cwd: path.join(nextDir, 'Client'), step: 'Next production build' });
+    run('npm', 'build', { cwd: nextLayout.frontendDir, step: 'Next production build' });
     pass('React + Next production build');
     }
 
     generate('SmokeReactVite', ['--frontend', 'react', '--react-framework', 'vite'], tempRoot);
     const viteDir = path.join(tempRoot, 'SmokeReactVite');
-    await assertBackend(viteDir);
-    await assertExists(path.join(viteDir, 'Client', 'vite.config.ts'), 'Vite config');
-    await assertExists(path.join(viteDir, 'Client', 'src', 'app', 'router', 'app-router.tsx'), 'React Router');
+    const viteLayout = await loadProjectLayout(viteDir);
+    await assertBackend(viteLayout);
+    await assertExists(frontendFile(viteLayout, 'vite.config.ts'), 'Vite config');
+    await assertExists(frontendFile(viteLayout, 'src', 'app', 'router', 'app-router.tsx'), 'React Router');
     await assertExists(
-      path.join(viteDir, 'Client', 'src', 'modules', 'example', 'slices', 'thunks'),
+      frontendFile(viteLayout, 'src', 'modules', 'example', 'slices', 'thunks'),
       'Vite slices/thunks',
     );
     await assertMissing(
-      path.join(viteDir, 'Client', 'src', 'modules', 'example', 'thunks'),
+      frontendFile(viteLayout, 'src', 'modules', 'example', 'thunks'),
       'Vite sibling thunks absent',
     );
-    await assertExists(path.join(viteDir, 'Client', 'src', 'store', 'store.ts'), 'Vite Redux store');
-    await assertExists(path.join(viteDir, 'Client', 'src', 'lib', 'api', 'api-client.ts'), 'Vite api-client');
-    await assertMissing(path.join(viteDir, 'Client', 'src', 'lib', 'api', 'server-api.ts'), 'Vite has no server-api');
-    await assertExists(path.join(viteDir, 'Client', 'src', 'i18n', 'index.ts'), 'react-i18next foundation');
-    const vitePkg = await readJson(path.join(viteDir, 'Client', 'package.json'));
+    await assertExists(frontendFile(viteLayout, 'src', 'store', 'store.ts'), 'Vite Redux store');
+    await assertExists(frontendFile(viteLayout, 'src', 'lib', 'api', 'api-client.ts'), 'Vite api-client');
+    await assertMissing(frontendFile(viteLayout, 'src', 'lib', 'api', 'server-api.ts'), 'Vite has no server-api');
+    await assertExists(frontendFile(viteLayout, 'src', 'i18n', 'index.ts'), 'react-i18next foundation');
+    const vitePkg = await readJson(frontendFile(viteLayout, 'package.json'));
     assertNoForbiddenDeps(vitePkg, ['next-intl', '@angular/core', '@ngrx/store'], 'React Vite');
-    const viteEnv = await readText(path.join(viteDir, 'Client', '.env.example'));
+    const viteEnv = await readText(frontendFile(viteLayout, '.env.example'));
     if (!viteEnv.includes('VITE_API_URL') || viteEnv.includes('NEXT_PUBLIC_API_URL')) {
       throw new Error('Vite env example is incorrect');
     }
-    const viteManifest = await readJson(path.join(viteDir, '.fullstack-app.json'));
+    const viteManifest = viteLayout.manifest;
     if (viteManifest.frontend.framework !== 'vite') {
       throw new Error('Vite manifest is incorrect');
     }
     process.stdout.write('i SmokeReactVite: frontend production build\n');
-    run('npm', 'build', { cwd: path.join(viteDir, 'Client'), step: 'Vite production build' });
+    run('npm', 'build', { cwd: viteLayout.frontendDir, step: 'Vite production build' });
     pass('React + Vite production build');
 
     generate('SmokeAngular', ['--frontend', 'angular'], tempRoot);
     const angularDir = path.join(tempRoot, 'SmokeAngular');
-    await assertBackend(angularDir);
-    await assertExists(path.join(angularDir, 'Client', 'src', 'app', 'app.routes.ts'), 'Angular app.routes');
+    const angularLayout = await loadProjectLayout(angularDir);
+    await assertBackend(angularLayout);
+    await assertExists(frontendFile(angularLayout, 'src', 'app', 'app.routes.ts'), 'Angular app.routes');
     await assertExists(
-      path.join(angularDir, 'Client', 'src', 'app', 'features', 'example'),
+      frontendFile(angularLayout, 'src', 'app', 'features', 'example'),
       'Angular example feature',
     );
     await assertExists(
-      path.join(angularDir, 'Client', 'src', 'app', 'features', 'example', 'store', 'example.actions.ts'),
+      frontendFile(angularLayout, 'src', 'app', 'features', 'example', 'store', 'example.actions.ts'),
       'NgRx actions',
     );
     await assertExists(
-      path.join(angularDir, 'Client', 'src', 'app', 'features', 'example', 'store', 'example.reducer.ts'),
+      frontendFile(angularLayout, 'src', 'app', 'features', 'example', 'store', 'example.reducer.ts'),
       'NgRx reducer',
     );
     await assertExists(
-      path.join(angularDir, 'Client', 'src', 'app', 'features', 'example', 'store', 'example.effects.ts'),
+      frontendFile(angularLayout, 'src', 'app', 'features', 'example', 'store', 'example.effects.ts'),
       'NgRx effects',
     );
     await assertExists(
-      path.join(angularDir, 'Client', 'src', 'app', 'features', 'example', 'store', 'example.selectors.ts'),
+      frontendFile(angularLayout, 'src', 'app', 'features', 'example', 'store', 'example.selectors.ts'),
       'NgRx selectors',
     );
-    const angularPkg = await readJson(path.join(angularDir, 'Client', 'package.json'));
+    const angularPkg = await readJson(frontendFile(angularLayout, 'package.json'));
     assertNoForbiddenDeps(angularPkg, [
       'react',
       'react-dom',
@@ -282,21 +285,24 @@ async function main() {
       'framer-motion',
     ], 'Angular');
     await assertMissing(
-      path.join(angularDir, 'Client', 'src', 'modules', 'example', 'slices', 'thunks'),
+      frontendFile(angularLayout, 'src', 'modules', 'example', 'slices', 'thunks'),
       'Angular does not use React thunk folders',
     );
-    const angularManifest = await readJson(path.join(angularDir, '.fullstack-app.json'));
+    const angularManifest = angularLayout.manifest;
     if (angularManifest.frontend.library !== 'angular' || angularManifest.frontend.framework !== null) {
       throw new Error('Angular manifest is incorrect');
     }
     process.stdout.write('i SmokeAngular: frontend production build\n');
-    run('npm', 'build', { cwd: path.join(angularDir, 'Client'), step: 'Angular production build' });
+    run('npm', 'build', { cwd: angularLayout.frontendDir, step: 'Angular production build' });
     pass('Angular production build');
 
     generate('SmokeFrontendOnly', ['--no-backend', '--frontend', 'react', '--react-framework', 'vite'], tempRoot);
     const frontendOnlyDir = path.join(tempRoot, 'SmokeFrontendOnly');
-    await assertExists(path.join(frontendOnlyDir, 'Client'), 'Frontend-only Client');
+    const frontendOnlyLayout = await loadProjectLayout(frontendOnlyDir);
+    await assertExists(frontendOnlyLayout.frontendDir, 'Frontend-only root');
+    await assertExists(frontendFile(frontendOnlyLayout, 'package.json'), 'Frontend-only package.json');
     await assertMissing(path.join(frontendOnlyDir, 'API'), 'Frontend-only has no API');
+    await assertMissing(path.join(frontendOnlyDir, 'Backend'), 'Frontend-only has no Backend folder');
     const slnFiles = (await fs.readdir(frontendOnlyDir)).filter((name) => name.endsWith('.slnx') || name.endsWith('.sln'));
     if (slnFiles.length > 0) {
       throw new Error(`Frontend-only project should not contain a solution file: ${slnFiles.join(', ')}`);
@@ -305,9 +311,11 @@ async function main() {
 
     generate('SmokeBackendOnly', ['--no-frontend'], tempRoot);
     const backendOnlyDir = path.join(tempRoot, 'SmokeBackendOnly');
-    await assertBackend(backendOnlyDir);
+    const backendOnlyLayout = await loadProjectLayout(backendOnlyDir);
+    await assertBackend(backendOnlyLayout);
+    await assertMissing(path.join(backendOnlyDir, 'Frontend'), 'Backend-only has no Frontend');
     await assertMissing(path.join(backendOnlyDir, 'Client'), 'Backend-only has no Client');
-    pass('Backend-only generation has no frontend prompts or Client');
+    pass('Backend-only generation has no frontend prompts or Frontend folder');
 
     succeeded = true;
     pass('Smoke test matrix completed');

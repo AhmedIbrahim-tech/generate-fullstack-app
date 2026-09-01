@@ -1,5 +1,7 @@
 import { groupFields } from '../fields/field-mappers.js';
 import { getBackendFilePath } from '../../utils/project-paths.js';
+import { isDapperOnly, usesDapper } from './architecture.js';
+import { renderDapperLookupHandler } from './dapper-application.generator.js';
 
 export const LOOKUP_DEFAULT_TAKE = 50;
 export const LOOKUP_MAX_TAKE = 100;
@@ -72,7 +74,7 @@ export function planLookupFiles(config) {
 /**
  * @param {object} config
  */
-function renderLookupQuery(config) {
+export function renderLookupQuery(config) {
   const { pluralName } = config.feature;
   const ns = config.projectName;
 
@@ -91,7 +93,10 @@ public sealed record Lookup${pluralName}Query(string? Search = null, int Take = 
  * @param {object} config
  * @param {string} display
  */
-function renderLookupHandler(config, display) {
+export function renderLookupHandler(config, display) {
+  if (usesDapper(config.orm)) {
+    return renderDapperLookupHandler(config, display);
+  }
   const { pluralName } = config.feature;
   const ns = config.projectName;
 

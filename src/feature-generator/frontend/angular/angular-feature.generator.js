@@ -113,7 +113,11 @@ export function planAngularFeatureFiles(config) {
 
   files.push({
     relativePath: path.join(base, `${ctx.kebab}.routes.ts`),
-    contents: renderRoutes(ctx),
+    contents: renderRoutes(ctx, { publicOnly: false }),
+  });
+  files.push({
+    relativePath: path.join(base, `${ctx.kebab}.public.routes.ts`),
+    contents: renderRoutes(ctx, { publicOnly: true }),
   });
 
   return files;
@@ -132,16 +136,7 @@ function buildContext(config) {
     kebabPluralName: kebabPlural,
   } = config.feature;
 
-  const ops = config.operations ?? {
-    list: true,
-    getById: true,
-    create: true,
-    update: true,
-    delete: true,
-    restore: false,
-    search: true,
-    pagination: true,
-  };
+  const ops = config.operations;
 
   const fields = (config.fields ?? []).map((field) => normalizeNgField(field));
   const surface = config.surface ?? { dashboard: true, public: false };
@@ -1355,13 +1350,15 @@ function renderListPage(ctx) {
   if (ctx.ops.restore) tableBindings.push('(restore)="restore($event)"');
 
   const createButton = ctx.ops.create
-    ? `        <button
+    ? `        @if (!isPublic) {
+        <button
           type="button"
           class="rounded-md bg-zinc-900 px-4 py-2 text-sm text-white"
           (click)="create()"
         >
           Create ${ctx.enSingular}
-        </button>`
+        </button>
+        }`
     : '';
 
   /** @type {string[]} */
@@ -1414,12 +1411,10 @@ function renderListPage(ctx) {
   }
 
   const needsRouter = ctx.ops.create || ctx.ops.update;
-  const routerImport = needsRouter
-    ? `import { Router } from "@angular/router";\n`
-    : '';
-  const routerField = needsRouter
-    ? `  private readonly router = inject(Router);\n`
-    : '';
+  const routerImport = `import { ActivatedRoute${needsRouter ? ', Router' : ''} } from "@angular/router";\n`;
+  const routerField = `  private readonly route = inject(ActivatedRoute);\n  readonly isPublic = this.route.snapshot.data["readonly"] === true;\n${
+    needsRouter ? '  private readonly router = inject(Router);\n' : ''
+  }`;
 
   return `import { Component, OnInit, inject } from "@angular/core";
 ${routerImport}import { Store } from "@ngrx/store";
@@ -1642,7 +1637,10 @@ export class Edit${ctx.Singular}PageComponent implements OnInit {
 /**
  * @param {ReturnType<typeof buildContext>} ctx
  */
-function renderRoutes(ctx) {
+function renderRoutes(ctx, options = {}) {
+  const publicOnly = options.publicOnly === true;
+  const exportName = publicOnly ? `${ctx.featureKey}PublicRoutes` : `${ctx.featureKey}Routes`;
+
   /** @type {string[]} */
   const imports = [
     `import { Routes } from "@angular/router";`,
@@ -1650,12 +1648,12 @@ function renderRoutes(ctx) {
     `import { provideState } from "@ngrx/store";`,
     `import { ${ctx.Plural}PageComponent } from "./pages/${ctx.kebabPlural}-page/${ctx.kebabPlural}-page.component";`,
   ];
-  if (ctx.ops.create) {
+  if (!publicOnly && ctx.ops.create) {
     imports.push(
       `import { Create${ctx.Singular}PageComponent } from "./pages/create-${ctx.kebab}-page/create-${ctx.kebab}-page.component";`,
     );
   }
-  if (ctx.ops.update) {
+  if (!publicOnly && ctx.ops.update) {
     imports.push(
       `import { Edit${ctx.Singular}PageComponent } from "./pages/edit-${ctx.kebab}-page/edit-${ctx.kebab}-page.component";`,
     );
@@ -1671,13 +1669,17 @@ function renderRoutes(ctx) {
   );
 
   /** @type {string[]} */
-  const children = [`      { path: "", component: ${ctx.Plural}PageComponent },`];
-  if (ctx.ops.create) {
+  const children = [
+    publicOnly
+      ? `      { path: "", component: ${ctx.Plural}PageComponent, data: { readonly: true } },`
+      : `      { path: "", component: ${ctx.Plural}PageComponent },`,
+  ];
+  if (!publicOnly && ctx.ops.create) {
     children.push(
       `      { path: "create", component: Create${ctx.Singular}PageComponent },`,
     );
   }
-  if (ctx.ops.update) {
+  if (!publicOnly && ctx.ops.update) {
     children.push(
       `      { path: ":id/edit", component: Edit${ctx.Singular}PageComponent },`,
     );
@@ -1685,7 +1687,7 @@ function renderRoutes(ctx) {
 
   return `${imports.join('\n')}
 
-export const ${ctx.featureKey}Routes: Routes = [
+export const ${exportName}: Routes = [
   {
     path: "",
     providers: [

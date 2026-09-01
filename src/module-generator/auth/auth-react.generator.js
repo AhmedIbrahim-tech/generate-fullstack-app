@@ -1,5 +1,19 @@
 import path from 'node:path';
 import { paths } from '../modules-orchestrator-helpers.js';
+import { convertTypeScriptToJavaScript } from '../../generators/frontend/react/javascript.js';
+
+/**
+ * @param {object} config
+ */
+function resolveAuthFrontendProfile(config) {
+  const frontend = config?.manifest?.frontend ?? {};
+  return {
+    state:
+      frontend.state === 'zustand' ? 'zustand' : frontend.state === 'none' ? 'none' : 'redux',
+    httpClient: frontend.httpClient === 'fetch' ? 'fetch' : 'axios',
+    language: frontend.language === 'javascript' ? 'javascript' : 'typescript',
+  };
+}
 
 /**
  * V4 Authentication — React module generator.
@@ -23,7 +37,8 @@ import { paths } from '../modules-orchestrator-helpers.js';
 export function planAuthReactModule(config) {
   const framework =
     config?.frontendStrategy?.framework === 'vite' ? 'vite' : 'next';
-  const ctx = { framework };
+  const profile = resolveAuthFrontendProfile(config);
+  const ctx = { framework, ...profile };
 
   const moduleBase = paths.reactModule('auth');
   const libApiBase = paths.client('lib', 'api');
@@ -31,7 +46,6 @@ export function planAuthReactModule(config) {
   /** @type {{ relativePath: string, contents: string, writeMode?: string }[]} */
   const files = [];
 
-  // --- types + schema -------------------------------------------------------
   files.push({
     relativePath: path.join(moduleBase, 'types', 'auth.types.ts'),
     contents: renderTypes(),
@@ -41,60 +55,68 @@ export function planAuthReactModule(config) {
     contents: renderSchema(),
   });
 
-  // --- services -------------------------------------------------------------
   files.push({
     relativePath: path.join(moduleBase, 'services', 'auth.routes.ts'),
     contents: renderRoutes(),
   });
   files.push({
     relativePath: path.join(moduleBase, 'services', 'refresh-client.ts'),
-    contents: renderRefreshClient(),
+    contents: renderRefreshClient(profile),
   });
   files.push({
     relativePath: path.join(moduleBase, 'services', 'auth.service.ts'),
     contents: renderService(),
   });
 
-  // --- slice + thunks -------------------------------------------------------
-  files.push({
-    relativePath: path.join(moduleBase, 'slices', 'thunks', 'login.thunk.ts'),
-    contents: renderLoginThunk(),
-  });
-  files.push({
-    relativePath: path.join(moduleBase, 'slices', 'thunks', 'register.thunk.ts'),
-    contents: renderRegisterThunk(),
-  });
-  files.push({
-    relativePath: path.join(moduleBase, 'slices', 'thunks', 'refresh.thunk.ts'),
-    contents: renderRefreshThunk(),
-  });
-  files.push({
-    relativePath: path.join(moduleBase, 'slices', 'thunks', 'logout.thunk.ts'),
-    contents: renderLogoutThunk(),
-  });
-  files.push({
-    relativePath: path.join(moduleBase, 'slices', 'thunks', 'me.thunk.ts'),
-    contents: renderMeThunk(),
-  });
-  files.push({
-    relativePath: path.join(moduleBase, 'slices', 'auth.slice.ts'),
-    contents: renderSlice(),
-  });
+  if (profile.state === 'redux') {
+    files.push({
+      relativePath: path.join(moduleBase, 'slices', 'thunks', 'login.thunk.ts'),
+      contents: renderLoginThunk(),
+    });
+    files.push({
+      relativePath: path.join(moduleBase, 'slices', 'thunks', 'register.thunk.ts'),
+      contents: renderRegisterThunk(),
+    });
+    files.push({
+      relativePath: path.join(moduleBase, 'slices', 'thunks', 'refresh.thunk.ts'),
+      contents: renderRefreshThunk(),
+    });
+    files.push({
+      relativePath: path.join(moduleBase, 'slices', 'thunks', 'logout.thunk.ts'),
+      contents: renderLogoutThunk(),
+    });
+    files.push({
+      relativePath: path.join(moduleBase, 'slices', 'thunks', 'me.thunk.ts'),
+      contents: renderMeThunk(),
+    });
+    files.push({
+      relativePath: path.join(moduleBase, 'slices', 'auth.slice.ts'),
+      contents: renderSlice(),
+    });
+  } else if (profile.state === 'zustand') {
+    files.push({
+      relativePath: path.join(moduleBase, 'store', 'use-auth-store.ts'),
+      contents: renderZustandAuthStore(),
+    });
+  } else {
+    files.push({
+      relativePath: path.join(moduleBase, 'services', 'auth-session.ts'),
+      contents: renderMemoryAuthSession(),
+    });
+  }
 
-  // --- hooks ----------------------------------------------------------------
   files.push({
     relativePath: path.join(moduleBase, 'hooks', 'useAuth.ts'),
-    contents: renderUseAuth(),
+    contents: renderUseAuth(profile),
   });
   files.push({
     relativePath: path.join(moduleBase, 'hooks', 'useAuthController.ts'),
-    contents: renderUseAuthController(),
+    contents: renderUseAuthController(profile),
   });
 
-  // --- components -----------------------------------------------------------
   files.push({
     relativePath: path.join(moduleBase, 'components', 'AuthInitializer.tsx'),
-    contents: renderAuthInitializer(),
+    contents: renderAuthInitializer(profile),
   });
   files.push({
     relativePath: path.join(moduleBase, 'components', 'AuthGate.tsx'),
@@ -117,7 +139,6 @@ export function planAuthReactModule(config) {
     contents: renderRegisterForm(ctx),
   });
 
-  // --- module pages ---------------------------------------------------------
   files.push({
     relativePath: path.join(moduleBase, 'pages', 'LoginPage.tsx'),
     contents: renderLoginPage(ctx),
@@ -127,35 +148,53 @@ export function planAuthReactModule(config) {
     contents: renderRegisterPage(ctx),
   });
 
-  // --- barrel ---------------------------------------------------------------
   files.push({
     relativePath: path.join(moduleBase, 'index.ts'),
-    contents: renderIndex(),
+    contents: renderIndex(profile),
   });
 
-  // --- api-client interceptor installer ------------------------------------
   files.push({
     relativePath: path.join(libApiBase, 'api-client.auth.ts'),
     contents: renderApiClientAuth(),
   });
 
-  // --- framework wiring -----------------------------------------------------
   if (framework === 'next') {
-    files.push(...planNextWiring());
+    files.push(...planNextWiring(profile));
   } else {
-    files.push(...planViteWiring());
+    files.push(...planViteWiring(profile));
   }
 
-  // --- registry updates -----------------------------------------------------
   /** @type {{ relativePath: string, update: (existing: string) => string }[]} */
-  const registryUpdates = [
-    {
-      relativePath: paths.client('store', 'generated-reducers.ts'),
-      update: (existing) => buildAuthReducerRegistry(existing),
-    },
-  ];
+  const registryUpdates =
+    profile.state === 'redux'
+      ? [
+          {
+            relativePath: paths.client('store', 'generated-reducers.ts'),
+            update: (existing) => buildAuthReducerRegistry(existing),
+          },
+        ]
+      : [];
 
-  return { files, registryUpdates };
+  return {
+    files: applyAuthLanguage(files, profile.language),
+    registryUpdates,
+  };
+}
+
+/**
+ * @param {{ relativePath: string, contents: string, writeMode?: string }[]} files
+ * @param {string} language
+ */
+function applyAuthLanguage(files, language) {
+  if (language !== 'javascript') {
+    return files;
+  }
+
+  return files.map((file) => ({
+    ...file,
+    relativePath: file.relativePath.replace(/\.tsx$/, '.jsx').replace(/\.ts$/, '.js'),
+    contents: convertTypeScriptToJavaScript(file.contents),
+  }));
 }
 
 /**
@@ -193,28 +232,13 @@ export const generatedReducers = {};
 /**
  * @returns {{ relativePath: string, contents: string, writeMode?: string }[]}
  */
-function planNextWiring() {
+function planNextWiring(profile = { state: 'redux' }) {
   const appBase = paths.client('app');
 
   return [
     {
       relativePath: path.join(appBase, 'providers.tsx'),
-      contents: `"use client";
-
-import { Toaster } from "sonner";
-import type { ReactNode } from "react";
-import { StoreProvider } from "@/store/provider";
-import { AuthInitializer } from "@/modules/auth/components/AuthInitializer";
-
-export function Providers({ children }: { children: ReactNode }) {
-  return (
-    <StoreProvider>
-      <AuthInitializer>{children}</AuthInitializer>
-      <Toaster richColors closeButton position="top-right" />
-    </StoreProvider>
-  );
-}
-`,
+      contents: renderAuthProviders(profile, true),
       writeMode: 'replace',
     },
     {
@@ -231,35 +255,32 @@ export function Providers({ children }: { children: ReactNode }) {
     },
     {
       relativePath: path.join(appBase, '(dashboard)', 'layout.tsx'),
-      contents: `import Link from "next/link";
+      contents: `"use client";
+
+import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import { DashboardShell } from "@/shared/components/navigation/DashboardShell";
 import { generatedDashboardNav } from "@/navigation/generated-dashboard-nav";
+import { AppLink } from "@/app/navigation/app-link";
 import { AuthGate } from "@/modules/auth/components/AuthGate";
 
 export default function DashboardGroupLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: ReactNode;
 }>) {
+  const pathname = usePathname();
+
   return (
     <AuthGate>
-      <div className="min-h-screen">
-        <header className="border-b border-zinc-200 px-6 py-4">
-          <nav className="mx-auto flex max-w-5xl flex-wrap gap-4 text-sm">
-            <Link className="underline" href="/dashboard">
-              Dashboard
-            </Link>
-            {generatedDashboardNav.map((item) => (
-              <Link key={item.href} className="underline" href={item.href}>
-                {item.label}
-              </Link>
-            ))}
-            <Link className="underline" href="/">
-              Website
-            </Link>
-          </nav>
-        </header>
+      <DashboardShell
+        productName="Workspace"
+        pathname={pathname}
+        navItems={generatedDashboardNav}
+        Link={AppLink}
+      >
         {children}
-      </div>
+      </DashboardShell>
     </AuthGate>
   );
 }
@@ -272,26 +293,13 @@ export default function DashboardGroupLayout({
 /**
  * @returns {{ relativePath: string, contents: string, writeMode?: string }[]}
  */
-function planViteWiring() {
+function planViteWiring(profile = { state: 'redux' }) {
   const appBase = paths.client('app');
 
   return [
     {
       relativePath: path.join(appBase, 'providers.tsx'),
-      contents: `import { Toaster } from "sonner";
-import type { ReactNode } from "react";
-import { StoreProvider } from "@/store/provider";
-import { AuthInitializer } from "@/modules/auth/components/AuthInitializer";
-
-export function Providers({ children }: { children: ReactNode }) {
-  return (
-    <StoreProvider>
-      <AuthInitializer>{children}</AuthInitializer>
-      <Toaster richColors closeButton position="top-right" />
-    </StoreProvider>
-  );
-}
-`,
+      contents: renderAuthProviders(profile, false),
       writeMode: 'replace',
     },
     {
@@ -308,31 +316,34 @@ export function Providers({ children }: { children: ReactNode }) {
     },
     {
       relativePath: path.join(appBase, 'layouts', 'DashboardLayout.tsx'),
-      contents: `import { Link, Outlet } from "react-router-dom";
+      contents: `import type { ReactElement } from "react";
+import { Link, Outlet, useLocation } from "react-router-dom";
+import { DashboardShell } from "@/shared/components/navigation/DashboardShell";
 import { generatedDashboardNav } from "@/navigation/generated-dashboard-nav";
 import { AuthGate } from "@/modules/auth/components/AuthGate";
+import type { AppLinkProps } from "@/shared/navigation/app-link";
+
+function AppLink({ href, className, children, onClick }: AppLinkProps): ReactElement {
+  return (
+    <Link to={href} className={className} onClick={onClick}>
+      {children}
+    </Link>
+  );
+}
 
 export function DashboardLayout() {
+  const location = useLocation();
+
   return (
     <AuthGate>
-      <div className="min-h-screen">
-        <header className="border-b border-zinc-200 px-6 py-4">
-          <nav className="mx-auto flex max-w-5xl flex-wrap gap-4 text-sm">
-            <Link className="underline" to="/dashboard">
-              Dashboard
-            </Link>
-            {generatedDashboardNav.map((item) => (
-              <Link key={item.href} className="underline" to={item.href}>
-                {item.label}
-              </Link>
-            ))}
-            <Link className="underline" to="/">
-              Website
-            </Link>
-          </nav>
-        </header>
+      <DashboardShell
+        productName="Workspace"
+        pathname={location.pathname}
+        navItems={generatedDashboardNav}
+        Link={AppLink}
+      >
         <Outlet />
-      </div>
+      </DashboardShell>
     </AuthGate>
   );
 }
@@ -428,7 +439,41 @@ export const authAppRoutes = {
 `;
 }
 
-function renderRefreshClient() {
+function renderRefreshClient(profile = { httpClient: 'axios' }) {
+  if (profile.httpClient === 'fetch') {
+    return `import { publicEnv } from "@/lib/config/env";
+
+/**
+ * Dedicated fetch client for refresh. It has no 401 interceptor so refresh
+ * cannot recurse through the main apiClient.
+ */
+export const refreshClient = {
+  async post(url: string, body?: unknown) {
+    const target = url.startsWith("http")
+      ? url
+      : \`\${publicEnv.apiUrl.replace(/\\/$/, "")}/\${url.replace(/^\\//, "")}\`;
+    const response = await fetch(target, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await response.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+    if (!response.ok) {
+      throw { response: { data, status: response.status }, message: response.statusText };
+    }
+    return { data };
+  },
+};
+`;
+  }
+
   return `import axios from "axios";
 import { publicEnv } from "@/lib/config/env";
 
@@ -722,7 +767,67 @@ export default authSlice.reducer;
 `;
 }
 
-function renderUseAuth() {
+function renderUseAuth(profile = { state: 'redux' }) {
+  if (profile.state === 'zustand') {
+    return `"use client";
+
+import { useMemo } from "react";
+import { useAuthStore } from "../store/use-auth-store";
+
+export function useAuth() {
+  const auth = useAuthStore();
+
+  return useMemo(() => {
+    const roles = auth.user?.roles ?? [];
+    const permissions = auth.user?.permissions ?? [];
+
+    return {
+      user: auth.user,
+      accessToken: auth.accessToken,
+      isAuthenticated: auth.isAuthenticated,
+      isInitialized: auth.isInitialized,
+      isLoading: auth.isLoading,
+      error: auth.error,
+      roles,
+      permissions,
+      hasRole: (role: string) => roles.includes(role),
+      hasPermission: (permission: string) => permissions.includes(permission),
+    };
+  }, [auth]);
+}
+`;
+  }
+
+  if (profile.state === 'none') {
+    return `"use client";
+
+import { useMemo, useSyncExternalStore } from "react";
+import { getAuthSession, subscribeAuth } from "../services/auth-session";
+
+export function useAuth() {
+  const auth = useSyncExternalStore(subscribeAuth, getAuthSession, getAuthSession);
+
+  return useMemo(() => {
+    const roles = auth.user?.roles ?? [];
+    const permissions = auth.user?.permissions ?? [];
+
+    return {
+      user: auth.user,
+      accessToken: auth.accessToken,
+      isAuthenticated: auth.isAuthenticated,
+      isInitialized: auth.isInitialized,
+      isLoading: auth.isLoading,
+      error: auth.error,
+      roles,
+      permissions,
+      hasRole: (role: string) => roles.includes(role),
+      hasPermission: (permission: string) => permissions.includes(permission),
+    };
+  }, [auth]);
+}
+`;
+  }
+
   return `"use client";
 
 import { useMemo } from "react";
@@ -755,7 +860,144 @@ export function useAuth() {
 `;
 }
 
-function renderUseAuthController() {
+function renderUseAuthController(profile = { state: 'redux' }) {
+  if (profile.state === 'zustand') {
+    return `"use client";
+
+import { useCallback } from "react";
+import { notify } from "@/shared/utils/toast";
+import { useAuthStore } from "../store/use-auth-store";
+import { authService } from "../services/auth.service";
+import type { LoginRequest, RegisterRequest } from "../types/auth.types";
+
+export function useAuthController() {
+  const isLoading = useAuthStore((state) => state.isLoading);
+  const error = useAuthStore((state) => state.error);
+  const setSession = useAuthStore((state) => state.setSession);
+  const clearSession = useAuthStore((state) => state.clearSession);
+  const setError = useAuthStore((state) => state.setError);
+  const setLoading = useAuthStore((state) => state.setLoading);
+
+  const signIn = useCallback(
+    async (input: LoginRequest) => {
+      setLoading(true);
+      try {
+        const result = await authService.login(input);
+        setSession(result);
+        notify.success("Signed in");
+        return true;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to sign in");
+        notify.error("Unable to sign in");
+        return false;
+      }
+    },
+    [setError, setLoading, setSession],
+  );
+
+  const signUp = useCallback(
+    async (input: RegisterRequest) => {
+      setLoading(true);
+      try {
+        const result = await authService.register(input);
+        setSession(result);
+        notify.success("Account created");
+        return true;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to create account");
+        notify.error("Unable to create account");
+        return false;
+      }
+    },
+    [setError, setLoading, setSession],
+  );
+
+  const signOut = useCallback(async () => {
+    try {
+      await authService.logout();
+    } finally {
+      clearSession();
+      notify.success("Signed out");
+    }
+  }, [clearSession]);
+
+  const clearError = useCallback(() => setError(null), [setError]);
+
+  return { signIn, signUp, signOut, clearError, isLoading, error };
+}
+`;
+  }
+
+  if (profile.state === 'none') {
+    return `"use client";
+
+import { useCallback, useSyncExternalStore } from "react";
+import { notify } from "@/shared/utils/toast";
+import { authService } from "../services/auth.service";
+import {
+  clearAuthSession,
+  getAuthSession,
+  setAuthError,
+  setAuthLoading,
+  setAuthSession,
+  subscribeAuth,
+} from "../services/auth-session";
+import type { LoginRequest, RegisterRequest } from "../types/auth.types";
+
+export function useAuthController() {
+  const session = useSyncExternalStore(subscribeAuth, getAuthSession, getAuthSession);
+
+  const signIn = useCallback(async (input: LoginRequest) => {
+    setAuthLoading(true);
+    try {
+      const result = await authService.login(input);
+      setAuthSession(result);
+      notify.success("Signed in");
+      return true;
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Unable to sign in");
+      notify.error("Unable to sign in");
+      return false;
+    }
+  }, []);
+
+  const signUp = useCallback(async (input: RegisterRequest) => {
+    setAuthLoading(true);
+    try {
+      const result = await authService.register(input);
+      setAuthSession(result);
+      notify.success("Account created");
+      return true;
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Unable to create account");
+      notify.error("Unable to create account");
+      return false;
+    }
+  }, []);
+
+  const signOut = useCallback(async () => {
+    try {
+      await authService.logout();
+    } finally {
+      clearAuthSession();
+      notify.success("Signed out");
+    }
+  }, []);
+
+  const clearError = useCallback(() => setAuthError(null), []);
+
+  return {
+    signIn,
+    signUp,
+    signOut,
+    clearError,
+    isLoading: session.isLoading,
+    error: session.error,
+  };
+}
+`;
+  }
+
   return `"use client";
 
 import { useCallback } from "react";
@@ -816,7 +1058,129 @@ export function useAuthController() {
 `;
 }
 
-function renderAuthInitializer() {
+function renderAuthInitializer(profile = { state: 'redux' }) {
+  if (profile.state === 'zustand') {
+    return `"use client";
+
+import { useEffect, useRef } from "react";
+import type { ReactNode } from "react";
+import { installAuthInterceptors } from "@/lib/api/api-client.auth";
+import { useAuth } from "../hooks/useAuth";
+import { useAuthStore } from "../store/use-auth-store";
+import { authService } from "../services/auth.service";
+
+export function AuthInitializer({ children }: { children?: ReactNode }) {
+  const { isInitialized } = useAuth();
+  const startedRef = useRef(false);
+
+  useEffect(() => {
+    const eject = installAuthInterceptors({
+      getAccessToken: () => useAuthStore.getState().accessToken,
+      setAccessToken: (token) => useAuthStore.getState().setAccessToken(token),
+      refresh: async () => {
+        try {
+          const result = await authService.refresh();
+          useAuthStore.getState().setSession(result);
+          return result.accessToken;
+        } catch {
+          useAuthStore.getState().clearSession();
+          return null;
+        }
+      },
+      onSessionExpired: () => useAuthStore.getState().clearSession(),
+    });
+
+    return eject;
+  }, []);
+
+  useEffect(() => {
+    if (startedRef.current) {
+      return;
+    }
+    startedRef.current = true;
+    void authService
+      .refresh()
+      .then((result) => useAuthStore.getState().setSession(result))
+      .catch(() => useAuthStore.getState().markInitialized());
+  }, []);
+
+  if (!isInitialized) {
+    return (
+      <div className="ui-boot">
+        <span className="ui-spinner" role="status" aria-label="Loading" />
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+`;
+  }
+
+  if (profile.state === 'none') {
+    return `"use client";
+
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import type { ReactNode } from "react";
+import { installAuthInterceptors } from "@/lib/api/api-client.auth";
+import { authService } from "../services/auth.service";
+import {
+  clearAuthSession,
+  getAuthSession,
+  markAuthInitialized,
+  setAuthAccessToken,
+  setAuthSession,
+  subscribeAuth,
+} from "../services/auth-session";
+
+export function AuthInitializer({ children }: { children?: ReactNode }) {
+  const session = useSyncExternalStore(subscribeAuth, getAuthSession, getAuthSession);
+  const startedRef = useRef(false);
+
+  useEffect(() => {
+    const eject = installAuthInterceptors({
+      getAccessToken: () => getAuthSession().accessToken,
+      setAccessToken: (token) => setAuthAccessToken(token),
+      refresh: async () => {
+        try {
+          const result = await authService.refresh();
+          setAuthSession(result);
+          return result.accessToken;
+        } catch {
+          clearAuthSession();
+          return null;
+        }
+      },
+      onSessionExpired: () => clearAuthSession(),
+    });
+
+    return eject;
+  }, []);
+
+  useEffect(() => {
+    if (startedRef.current) {
+      return;
+    }
+    startedRef.current = true;
+    void authService
+      .refresh()
+      .then((result) => setAuthSession(result))
+      .catch(() => markAuthInitialized());
+  }, []);
+
+  if (!session.isInitialized) {
+    return (
+      <div className="ui-boot">
+        <span className="ui-spinner" role="status" aria-label="Loading" />
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+`;
+  }
+
   return `"use client";
 
 import { useEffect, useRef } from "react";
@@ -864,12 +1228,8 @@ export function AuthInitializer({ children }: { children?: ReactNode }) {
 
   if (!isInitialized) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
-        <span
-          className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900"
-          role="status"
-          aria-label="Loading"
-        />
+      <div className="ui-boot">
+        <span className="ui-spinner" role="status" aria-label="Loading" />
       </div>
     );
   }
@@ -903,7 +1263,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
   }, [isInitialized, isAuthenticated, router]);
 
-  if (!isInitialized || !isAuthenticated) {
+  if (!isInitialized) {
+    return (
+      <div className="ui-boot">
+        <span className="ui-spinner" role="status" aria-label="Loading" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
     return null;
   }
 
@@ -925,7 +1293,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const { isAuthenticated, isInitialized } = useAuth();
 
   if (!isInitialized) {
-    return null;
+    return (
+      <div className="ui-boot">
+        <span className="ui-spinner" role="status" aria-label="Loading" />
+      </div>
+    );
   }
 
   if (!isAuthenticated) {
@@ -1030,7 +1402,7 @@ export function LoginForm() {
 
   return (
     <form
-      className="flex w-full max-w-sm flex-col gap-4"
+      className="ui-form-stack"
       onSubmit={form.handleSubmit(async (values) => {
         const ok = await signIn(values);
         if (ok) {
@@ -1039,31 +1411,31 @@ export function LoginForm() {
       })}
       noValidate
     >
-      <label className="flex flex-col gap-1 text-sm text-zinc-800">
+      <label className="ui-field">
         Email
         <input
           type="email"
           autoComplete="email"
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
+          className="ui-input"
           {...form.register("email")}
         />
         {form.formState.errors.email ? (
-          <span className="text-xs text-red-600">
+          <span className="ui-error-text">
             {form.formState.errors.email.message}
           </span>
         ) : null}
       </label>
 
-      <label className="flex flex-col gap-1 text-sm text-zinc-800">
+      <label className="ui-field">
         Password
         <input
           type="password"
           autoComplete="current-password"
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
+          className="ui-input"
           {...form.register("password")}
         />
         {form.formState.errors.password ? (
-          <span className="text-xs text-red-600">
+          <span className="ui-error-text">
             {form.formState.errors.password.message}
           </span>
         ) : null}
@@ -1072,15 +1444,19 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={isLoading}
-        className="mt-2 rounded-md bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-60"
+        className="ui-btn ui-btn-primary"
       >
         {isLoading ? "Signing in..." : "Sign in"}
       </button>
 
-      <p className="text-sm text-zinc-600">
+      <p className="ui-form-foot">
         Need an account?{" "}
-        ${nav.linkOpen('authAppRoutes.register')} className="text-zinc-900 underline">
+        ${nav.linkOpen('authAppRoutes.register')}>
           Create one
+        </Link>
+        <br />
+        ${nav.linkOpen('"/forgot-password"')}>
+          Forgot password
         </Link>
       </p>
     </form>
@@ -1116,7 +1492,7 @@ export function RegisterForm() {
 
   return (
     <form
-      className="flex w-full max-w-sm flex-col gap-4"
+      className="ui-form-stack"
       onSubmit={form.handleSubmit(async (values) => {
         const ok = await signUp({
           email: values.email,
@@ -1129,61 +1505,61 @@ export function RegisterForm() {
       })}
       noValidate
     >
-      <label className="flex flex-col gap-1 text-sm text-zinc-800">
+      <label className="ui-field">
         Name
         <input
           type="text"
           autoComplete="name"
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
+          className="ui-input"
           {...form.register("displayName")}
         />
         {form.formState.errors.displayName ? (
-          <span className="text-xs text-red-600">
+          <span className="ui-error-text">
             {form.formState.errors.displayName.message}
           </span>
         ) : null}
       </label>
 
-      <label className="flex flex-col gap-1 text-sm text-zinc-800">
+      <label className="ui-field">
         Email
         <input
           type="email"
           autoComplete="email"
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
+          className="ui-input"
           {...form.register("email")}
         />
         {form.formState.errors.email ? (
-          <span className="text-xs text-red-600">
+          <span className="ui-error-text">
             {form.formState.errors.email.message}
           </span>
         ) : null}
       </label>
 
-      <label className="flex flex-col gap-1 text-sm text-zinc-800">
+      <label className="ui-field">
         Password
         <input
           type="password"
           autoComplete="new-password"
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
+          className="ui-input"
           {...form.register("password")}
         />
         {form.formState.errors.password ? (
-          <span className="text-xs text-red-600">
+          <span className="ui-error-text">
             {form.formState.errors.password.message}
           </span>
         ) : null}
       </label>
 
-      <label className="flex flex-col gap-1 text-sm text-zinc-800">
+      <label className="ui-field">
         Confirm password
         <input
           type="password"
           autoComplete="new-password"
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
+          className="ui-input"
           {...form.register("confirmPassword")}
         />
         {form.formState.errors.confirmPassword ? (
-          <span className="text-xs text-red-600">
+          <span className="ui-error-text">
             {form.formState.errors.confirmPassword.message}
           </span>
         ) : null}
@@ -1192,14 +1568,14 @@ export function RegisterForm() {
       <button
         type="submit"
         disabled={isLoading}
-        className="mt-2 rounded-md bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-60"
+        className="ui-btn ui-btn-primary"
       >
         {isLoading ? "Creating account..." : "Create account"}
       </button>
 
-      <p className="text-sm text-zinc-600">
+      <p className="ui-form-foot">
         Already have an account?{" "}
-        ${nav.linkOpen('authAppRoutes.login')} className="text-zinc-900 underline">
+        ${nav.linkOpen('authAppRoutes.login')}>
           Sign in
         </Link>
       </p>
@@ -1209,50 +1585,78 @@ export function RegisterForm() {
 `;
 }
 
-function renderLoginPage() {
+function renderLoginPage(ctx = { framework: 'next' }) {
+  const nav = reactRouterKit(ctx.framework);
+  const toProp = ctx.framework === 'next' ? 'href' : 'to';
   return `"use client";
 
+import type { ReactElement } from "react";
+${nav.formImports}
 import { LoginForm } from "../components/LoginForm";
+import { AuthFrame } from "@/shared/components/auth/AuthFrame";
+import type { AppLinkProps } from "@/shared/navigation/app-link";
+
+function AppLink({ href, className, children, onClick }: AppLinkProps): ReactElement {
+  return (
+    <Link ${toProp}={href} className={className} onClick={onClick}>
+      {children}
+    </Link>
+  );
+}
 
 export default function LoginPage() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6 py-16">
-      <header>
-        <h1 className="text-3xl font-semibold text-zinc-900">Sign in</h1>
-        <p className="mt-1 text-sm text-zinc-600">
-          Welcome back. Enter your credentials to continue.
-        </p>
-      </header>
+    <AuthFrame
+      productName="Workspace"
+      title="Sign in"
+      description="Enter your credentials to continue."
+      Link={AppLink}
+    >
       <LoginForm />
-    </main>
+    </AuthFrame>
   );
 }
 `;
 }
 
-function renderRegisterPage() {
+function renderRegisterPage(ctx = { framework: 'next' }) {
+  const nav = reactRouterKit(ctx.framework);
+  const toProp = ctx.framework === 'next' ? 'href' : 'to';
   return `"use client";
 
+import type { ReactElement } from "react";
+${nav.formImports}
 import { RegisterForm } from "../components/RegisterForm";
+import { AuthFrame } from "@/shared/components/auth/AuthFrame";
+import type { AppLinkProps } from "@/shared/navigation/app-link";
+
+function AppLink({ href, className, children, onClick }: AppLinkProps): ReactElement {
+  return (
+    <Link ${toProp}={href} className={className} onClick={onClick}>
+      {children}
+    </Link>
+  );
+}
 
 export default function RegisterPage() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6 py-16">
-      <header>
-        <h1 className="text-3xl font-semibold text-zinc-900">Create account</h1>
-        <p className="mt-1 text-sm text-zinc-600">
-          Set up your account to get started.
-        </p>
-      </header>
+    <AuthFrame
+      productName="Workspace"
+      title="Create account"
+      description="Set up workspace access for this application."
+      Link={AppLink}
+    >
       <RegisterForm />
-    </main>
+    </AuthFrame>
   );
 }
 `;
 }
 
-function renderIndex() {
-  return `export { default as authReducer } from "./slices/auth.slice";
+function renderIndex(profile = { state: 'redux' }) {
+  const reduxExports =
+    profile.state === 'redux'
+      ? `export { default as authReducer } from "./slices/auth.slice";
 export {
   setAccessToken,
   sessionExpired,
@@ -1260,7 +1664,15 @@ export {
   clearAuthError,
 } from "./slices/auth.slice";
 
-export { default as LoginPage } from "./pages/LoginPage";
+export { login } from "./slices/thunks/login.thunk";
+export { register } from "./slices/thunks/register.thunk";
+export { refresh } from "./slices/thunks/refresh.thunk";
+export { logout } from "./slices/thunks/logout.thunk";
+export { loadCurrentUser } from "./slices/thunks/me.thunk";
+`
+      : '';
+
+  return `${reduxExports}export { default as LoginPage } from "./pages/LoginPage";
 export { default as RegisterPage } from "./pages/RegisterPage";
 
 export { LoginForm } from "./components/LoginForm";
@@ -1277,12 +1689,6 @@ export { authService } from "./services/auth.service";
 export { authApiRoutes, authAppRoutes } from "./services/auth.routes";
 export { refreshClient } from "./services/refresh-client";
 
-export { login } from "./slices/thunks/login.thunk";
-export { register } from "./slices/thunks/register.thunk";
-export { refresh } from "./slices/thunks/refresh.thunk";
-export { logout } from "./slices/thunks/logout.thunk";
-export { loadCurrentUser } from "./slices/thunks/me.thunk";
-
 export type {
   AuthUser,
   AuthState,
@@ -1294,39 +1700,20 @@ export type {
 }
 
 function renderApiClientAuth() {
-  return `import type {
-  AxiosError,
-  AxiosInstance,
-  InternalAxiosRequestConfig,
-} from "axios";
-import { apiClient } from "./api-client";
+  return `import { apiClient } from "./api-client";
 
 export type InstallAuthInterceptorsOptions = {
-  /** Reads the current in-memory access token (Redux). */
   getAccessToken: () => string | null;
-  /** Persists a freshly refreshed access token back into memory (Redux). */
   setAccessToken: (token: string | null) => void;
-  /** Performs the refresh (via the interceptor-free refresh client). */
   refresh: () => Promise<string | null>;
-  /** Called when the session cannot be recovered after a 401. */
   onSessionExpired: () => void;
-  /** Defaults to the shared \`apiClient\`. */
-  client?: AxiosInstance;
-};
-
-type RetryableRequestConfig = InternalAxiosRequestConfig & {
-  _authRetry?: boolean;
+  client?: typeof apiClient;
 };
 
 /**
  * Attaches the Bearer access token to every request and, on a 401, runs a
  * SINGLE-FLIGHT refresh shared by all concurrent failures before retrying each
  * original request exactly once.
- *
- * The refresh itself must go through a client WITHOUT this interceptor (see
- * \`refresh-client.ts\`) so refreshing can never recurse.
- *
- * @returns a cleanup function that removes the installed interceptors.
  */
 export function installAuthInterceptors(
   options: InstallAuthInterceptorsOptions,
@@ -1343,18 +1730,23 @@ export function installAuthInterceptors(
     return refreshPromise;
   };
 
-  const requestId = client.interceptors.request.use((config) => {
+  const requestId = client.interceptors.request.use((config: any) => {
     const token = options.getAccessToken();
     if (token) {
-      config.headers.set("Authorization", \`Bearer \${token}\`);
+      if (config.headers?.set) {
+        config.headers.set("Authorization", \`Bearer \${token}\`);
+      } else {
+        config.headers = config.headers ?? {};
+        config.headers.Authorization = \`Bearer \${token}\`;
+      }
     }
     return config;
   });
 
   const responseId = client.interceptors.response.use(
-    (response) => response,
-    async (error: AxiosError) => {
-      const original = error.config as RetryableRequestConfig | undefined;
+    (response: unknown) => response,
+    async (error: any) => {
+      const original = error.config;
       const status = error.response?.status;
 
       if (status !== 401 || !original || original._authRetry) {
@@ -1371,7 +1763,12 @@ export function installAuthInterceptors(
         }
 
         options.setAccessToken(token);
-        original.headers.set("Authorization", \`Bearer \${token}\`);
+        if (original.headers?.set) {
+          original.headers.set("Authorization", \`Bearer \${token}\`);
+        } else {
+          original.headers = original.headers ?? {};
+          original.headers.Authorization = \`Bearer \${token}\`;
+        }
         return client(original);
       } catch (refreshError) {
         options.onSessionExpired();
@@ -1384,6 +1781,180 @@ export function installAuthInterceptors(
     client.interceptors.request.eject(requestId);
     client.interceptors.response.eject(responseId);
   };
+}
+`;
+}
+
+function renderAuthProviders(profile = { state: 'redux' }, useClientDirective = true) {
+  const client = useClientDirective ? `"use client";\n\n` : '';
+  if (profile.state === 'redux') {
+    return `${client}import { Toaster } from "sonner";
+import type { ReactNode } from "react";
+import { StoreProvider } from "@/store/provider";
+import { AuthInitializer } from "@/modules/auth/components/AuthInitializer";
+
+export function Providers({ children }: { children: ReactNode }) {
+  return (
+    <StoreProvider>
+      <AuthInitializer>{children}</AuthInitializer>
+      <Toaster richColors closeButton position="top-right" />
+    </StoreProvider>
+  );
+}
+`;
+  }
+
+  return `${client}import { Toaster } from "sonner";
+import type { ReactNode } from "react";
+import { AuthInitializer } from "@/modules/auth/components/AuthInitializer";
+
+export function Providers({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <AuthInitializer>{children}</AuthInitializer>
+      <Toaster richColors closeButton position="top-right" />
+    </>
+  );
+}
+`;
+}
+
+function renderZustandAuthStore() {
+  return `import { create } from "zustand";
+import type { AuthResponse, AuthUser } from "../types/auth.types";
+
+type AuthStore = {
+  user: AuthUser | null;
+  accessToken: string | null;
+  isAuthenticated: boolean;
+  isInitialized: boolean;
+  isLoading: boolean;
+  error: string | null;
+  setSession: (response: AuthResponse) => void;
+  setAccessToken: (token: string | null) => void;
+  clearSession: () => void;
+  markInitialized: () => void;
+  setError: (error: string | null) => void;
+  setLoading: (isLoading: boolean) => void;
+};
+
+export const useAuthStore = create<AuthStore>((set) => ({
+  user: null,
+  accessToken: null,
+  isAuthenticated: false,
+  isInitialized: false,
+  isLoading: false,
+  error: null,
+  setSession: (response) =>
+    set({
+      user: response.user,
+      accessToken: response.accessToken,
+      isAuthenticated: true,
+      isInitialized: true,
+      isLoading: false,
+      error: null,
+    }),
+  setAccessToken: (token) =>
+    set({
+      accessToken: token,
+      isAuthenticated: token != null,
+    }),
+  clearSession: () =>
+    set({
+      user: null,
+      accessToken: null,
+      isAuthenticated: false,
+      isInitialized: true,
+      isLoading: false,
+      error: null,
+    }),
+  markInitialized: () => set({ isInitialized: true, isLoading: false }),
+  setError: (error) => set({ error, isLoading: false }),
+  setLoading: (isLoading) => set({ isLoading }),
+}));
+`;
+}
+
+function renderMemoryAuthSession() {
+  return `import type { AuthResponse, AuthUser } from "../types/auth.types";
+
+type AuthSession = {
+  user: AuthUser | null;
+  accessToken: string | null;
+  isAuthenticated: boolean;
+  isInitialized: boolean;
+  isLoading: boolean;
+  error: string | null;
+};
+
+const listeners = new Set<() => void>();
+
+let session: AuthSession = {
+  user: null,
+  accessToken: null,
+  isAuthenticated: false,
+  isInitialized: false,
+  isLoading: false,
+  error: null,
+};
+
+function emit() {
+  for (const listener of listeners) {
+    listener();
+  }
+}
+
+export function getAuthSession() {
+  return session;
+}
+
+export function subscribeAuth(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function setAuthSession(response: AuthResponse) {
+  session = {
+    user: response.user,
+    accessToken: response.accessToken,
+    isAuthenticated: true,
+    isInitialized: true,
+    isLoading: false,
+    error: null,
+  };
+  emit();
+}
+
+export function setAuthAccessToken(token: string | null) {
+  session = { ...session, accessToken: token };
+  emit();
+}
+
+export function setAuthLoading(isLoading: boolean) {
+  session = { ...session, isLoading };
+  emit();
+}
+
+export function setAuthError(error: string | null) {
+  session = { ...session, error, isLoading: false };
+  emit();
+}
+
+export function clearAuthSession() {
+  session = {
+    user: null,
+    accessToken: null,
+    isAuthenticated: false,
+    isInitialized: true,
+    isLoading: false,
+    error: null,
+  };
+  emit();
+}
+
+export function markAuthInitialized() {
+  session = { ...session, isInitialized: true, isLoading: false };
+  emit();
 }
 `;
 }

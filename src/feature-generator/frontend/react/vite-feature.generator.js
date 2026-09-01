@@ -33,24 +33,23 @@ export function buildViteRouteRegistryUpdate(config, existingContents) {
       ? existingContents
       : defaultRegistry();
 
-  content = ensureImport(
-    content,
-    `import ${Plural}Page from "@/modules/${kebabPlural}/pages/${Plural}Page";`,
-  );
-  if (ops.create) {
-    content = ensureImport(
-      content,
-      `import Create${Singular}Page from "@/modules/${kebabPlural}/pages/Create${Singular}Page";`,
-    );
-  }
-  if (ops.update) {
-    content = ensureImport(
-      content,
-      `import Edit${Singular}Page from "@/modules/${kebabPlural}/pages/Edit${Singular}Page";`,
-    );
-  }
-
   if (surface.dashboard) {
+    content = ensureImport(
+      content,
+      `import ${Plural}Page from "@/modules/${kebabPlural}/pages/${Plural}Page";`,
+    );
+    if (ops.create) {
+      content = ensureImport(
+        content,
+        `import Create${Singular}Page from "@/modules/${kebabPlural}/pages/Create${Singular}Page";`,
+      );
+    }
+    if (ops.update) {
+      content = ensureImport(
+        content,
+        `import Edit${Singular}Page from "@/modules/${kebabPlural}/pages/Edit${Singular}Page";`,
+      );
+    }
     content = ensureRouteInArray(
       content,
       'generatedDashboardRoutes',
@@ -73,10 +72,14 @@ export function buildViteRouteRegistryUpdate(config, existingContents) {
   }
 
   if (surface.public) {
+    content = ensureImport(
+      content,
+      `import ${Plural}PublicPage from "@/modules/${kebabPlural}/pages/${Plural}PublicPage";`,
+    );
     content = ensureRouteInArray(
       content,
       'generatedWebsiteRoutes',
-      `  { path: "/${kebabPlural}", element: <${Plural}Page /> },`,
+      `  { path: "/${kebabPlural}", element: <${Plural}PublicPage /> },`,
     );
   }
 

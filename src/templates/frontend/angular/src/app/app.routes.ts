@@ -5,6 +5,7 @@ import { WebsiteLayoutComponent } from "./layouts/website-layout/website-layout.
 import { HomePageComponent } from "./features/home/home.page";
 import { LoginPageComponent } from "./features/auth/login.page";
 import { RegisterPageComponent } from "./features/auth/register.page";
+import { ForgotPasswordPageComponent } from "./features/auth/forgot-password.page";
 import { DashboardPageComponent } from "./features/dashboard/dashboard.page";
 import {
   generatedDashboardRoutes,
@@ -23,6 +24,7 @@ export const routes: Routes = [
     children: [
       { path: "login", component: LoginPageComponent },
       { path: "register", component: RegisterPageComponent },
+      { path: "forgot-password", component: ForgotPasswordPageComponent },
     ],
   },
   {

@@ -179,8 +179,8 @@ create-fullstack-app MyUi --frontend-only --yes \
 ### User Preferences
 Save and reuse your preferred choices across projects:
 ```bash
-create-fullstack-app MyApp --save-preferences
-create-fullstack-app NextApp --use-preferences --yes
+create-fullstack-app MyApp --save-defaults
+create-fullstack-app NextApp --use-saved-preferences --yes
 ```
 
 ---

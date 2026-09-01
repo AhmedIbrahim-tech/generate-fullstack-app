@@ -5,9 +5,9 @@ import { Example } from "../models/example.model";
   selector: "app-example-card",
   standalone: true,
   template: `
-    <article class="rounded-lg border border-zinc-200 p-4">
-      <h2 class="text-lg font-medium">{{ example().name }}</h2>
-      <p class="mt-2 text-sm text-zinc-600">{{ example().description }}</p>
+    <article class="ui-card">
+      <h2 style="margin:0;font-size:1.05rem">{{ example().name }}</h2>
+      <p class="ui-note" style="margin-top:0.45rem">{{ example().description }}</p>
     </article>
   `,
 })

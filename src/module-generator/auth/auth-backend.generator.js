@@ -1,4 +1,5 @@
 import { paths } from '../modules-orchestrator-helpers.js';
+import { assertBackendCompatibility } from '../../models/backend.js';
 
 /**
  * V4 Authentication module — backend generator.
@@ -64,6 +65,17 @@ export const AUTH_BACKEND_ORCHESTRATION_NOTES = [
  * @returns {PlannedFile[]}
  */
 export function planAuthBackend(config) {
+  const orm = config?.manifest?.backend?.orm ?? config?.orm ?? 'efcore';
+  if (orm === 'dapper') {
+    throw new Error(
+      'Cannot generate Authentication for a Dapper-only project. Identity requires EF Core. Use --orm efcore or --orm efcore-dapper.',
+    );
+  }
+  assertBackendCompatibility({
+    orm,
+    authentication: config?.manifest?.backend?.authentication ?? 'identity-jwt',
+  });
+
   const ns = requireProjectName(config);
   const defaultRole = normalizeRole(config?.defaultRole) || DEFAULT_ROLE;
   const roles = normalizeRoles(config?.roles, defaultRole);

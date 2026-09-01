@@ -349,6 +349,7 @@ Backend Options:
   --architecture cqrs-mediatr|services CQRS + MediatR or Application Services
   --mapping manual|automapper        Manual mapping extensions or AutoMapper
   --orm efcore|dapper|efcore-dapper  Entity Framework Core, Dapper, or both
+                                    (Identity requires efcore or efcore-dapper)
   --database sqlserver|postgresql|sqlite SQL Server, PostgreSQL, or SQLite
   --logging serilog|ilogger          Serilog or built-in ILogger
   --background-jobs none|hangfire    Hangfire background processing

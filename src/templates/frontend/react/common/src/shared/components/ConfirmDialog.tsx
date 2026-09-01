@@ -26,30 +26,15 @@ export function ConfirmDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-dialog-title"
-    >
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
-        <h2 id="confirm-dialog-title" className="text-lg font-semibold text-zinc-900">
-          {title}
-        </h2>
-        <p className="mt-2 text-sm text-zinc-600">{message}</p>
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            className="rounded border border-zinc-300 px-3 py-1.5 text-sm"
-            onClick={onCancel}
-          >
+    <div className="ui-dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+      <div className="ui-dialog">
+        <h2 id="confirm-dialog-title">{title}</h2>
+        <p>{message}</p>
+        <div className="ui-dialog-actions">
+          <button type="button" className="ui-btn ui-btn-ghost" onClick={onCancel}>
             {cancelLabel}
           </button>
-          <button
-            type="button"
-            className="rounded bg-red-600 px-3 py-1.5 text-sm text-white"
-            onClick={onConfirm}
-          >
+          <button type="button" className="ui-btn ui-btn-danger" onClick={onConfirm}>
             {confirmLabel}
           </button>
         </div>

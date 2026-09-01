@@ -22,6 +22,7 @@ import { runCommand } from '../utils/command.js';
 import { add as installNpmPackages } from '../utils/package-manager.js';
 import { logger } from '../utils/logger.js';
 import { planAuthBackend, getAuthAppsettingsPatch, AUTH_BACKEND_ORCHESTRATION_NOTES, authBackendConflictPaths } from './auth/auth-backend.generator.js';
+import { assertBackendCompatibility } from '../models/backend.js';
 import { planAuthFrontend } from './auth/auth-frontend.generator.js';
 import { patchProgramForAuth } from './auth/auth-program-patch.js';
 import { planUsersModule } from './users/users.generator.js';
@@ -246,6 +247,17 @@ async function planModule(moduleId, config) {
  * @param {object} config
  */
 function planAuthCombined(config) {
+  const orm = config.manifest?.backend?.orm ?? 'efcore';
+  assertBackendCompatibility({
+    orm,
+    authentication: config.manifest?.backend?.authentication ?? 'identity-jwt',
+  });
+  if (orm === 'dapper') {
+    throw new Error(
+      'Cannot install Authentication on a Dapper-only project. Identity requires EF Core. Use --orm efcore or --orm efcore-dapper.',
+    );
+  }
+
   const backendFiles = planAuthBackend(config);
   const frontend = config.frontendStrategy?.library
     ? planAuthFrontend(config)
@@ -667,6 +679,10 @@ function markModuleEnabled(manifest, moduleId) {
  * @param {object} [manifest]
  */
 async function createModuleMigration(projectRoot, projectName, moduleId, manifest) {
+  if (manifest?.backend?.orm === 'dapper') {
+    logger.info('Skipping EF migration because this project uses Dapper-only data access.');
+    return;
+  }
   const name = MIGRATION_NAMES[moduleId] ?? `Add${pascal(moduleId)}`;
   const backendDir = getBackendDirectory(projectRoot, manifest) ?? projectRoot;
   const infra = path.join(backendDir, 'Infrastructure');

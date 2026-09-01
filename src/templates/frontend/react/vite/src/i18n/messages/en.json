@@ -1,10 +1,12 @@
 {
   "home": {
-    "title": "Welcome to __DISPLAY_NAME__",
-    "description": "A generic full-stack starter for web applications."
+    "title": "A professional baseline for the product you are about to build.",
+    "description": "Public pages, a dashboard workspace, and a typed API client — generated as a coherent application instead of a starter screen.",
+    "ctaPrimary": "Open dashboard",
+    "ctaSecondary": "Sign in"
   },
   "example": {
-    "title": "Examples",
-    "description": "Architecture sample: page, controller hook, async thunk, service, apiClient."
+    "title": "Architecture sample",
+    "description": "A working slice of the client pattern: page, controller, service, and API client."
   }
 }

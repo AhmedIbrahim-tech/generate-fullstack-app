@@ -3,6 +3,7 @@ import { runCommand } from '../utils/command.js';
 import { copyTemplate, ensureDir, removeFilesMatching, templatesRoot, upsertCsprojProperties, writeFile } from '../utils/filesystem.js';
 import { assertDotnetAvailable, detectTargetFramework } from '../utils/dotnet.js';
 import { logger } from '../utils/logger.js';
+import { assertBackendCompatibility, shouldGenerateIdentityArtifacts } from '../models/backend.js';
 
 const PROJECTS = [
   { folder: 'Domain', template: 'classlib', log: 'Domain created' },
@@ -43,6 +44,8 @@ export async function generateBackend(options) {
     realtime,
     authMode,
   };
+
+  assertBackendCompatibility({ orm, authentication: authMode });
 
   for (const project of PROJECTS) {
     const args = [
@@ -178,7 +181,7 @@ function addBackendPackages(cwd, config) {
     }
   }
 
-  if (config.authMode !== 'none') {
+  if (shouldGenerateIdentityArtifacts(config.authMode) && config.orm !== 'dapper') {
     infrastructurePackages.push('Microsoft.AspNetCore.Identity.EntityFrameworkCore');
   }
 
@@ -252,6 +255,25 @@ async function overlayBackendTemplates(options, config, backendDir) {
 
   await copyTemplate(path.join(templatesRoot(), 'backend'), backendDir, replacements);
 
+  if (config.architecture === 'services') {
+    await removeFilesMatching(path.join(backendDir, 'Application', 'Behaviors'), () => true);
+  }
+
+  if (config.orm === 'dapper') {
+    await removeFilesMatching(path.join(backendDir, 'Infrastructure', 'Persistence'), (filePath) => {
+      const base = path.basename(filePath);
+      return base === 'ApplicationDbContext.cs' || base.startsWith('ApplicationDbContext.');
+    });
+    await removeFilesMatching(
+      path.join(backendDir, 'Application', 'Abstractions', 'Persistence'),
+      (filePath) => path.basename(filePath).startsWith('IApplicationDbContext'),
+    );
+  }
+
+  if (!shouldGenerateIdentityArtifacts(config.authMode)) {
+    await removeFilesMatching(path.join(backendDir, 'Infrastructure', 'Authentication'), () => true);
+  }
+
   // Write tailored appsettings.json
   await writeAppSettings(backendDir, pascalName, connectionString, config);
 
@@ -308,7 +330,7 @@ async function writeAppSettings(targetDir, pascalName, connectionString, config)
     };
   }
 
-  if (config.authMode !== 'none') {
+  if (shouldGenerateIdentityArtifacts(config.authMode)) {
     appSettings.Auth = {
       SeedAdmin: {
         Enabled: false,
@@ -352,9 +374,25 @@ async function writeAppSettings(targetDir, pascalName, connectionString, config)
  * @param {string} pascalName
  * @param {object} config
  */
-async function writeInfrastructureDi(targetDir, pascalName, config) {
+/**
+ * @param {string} pascalName
+ * @param {object} config
+ */
+export function renderInfrastructureDi(pascalName, config) {
   let dbRegistration = '';
   let usings = ['using Microsoft.Extensions.Configuration;', 'using Microsoft.Extensions.DependencyInjection;'];
+
+  const needsConnectionString =
+    config.orm === 'efcore' ||
+    config.orm === 'efcore-dapper' ||
+    (config.backgroundJobs === 'hangfire' && config.database !== 'sqlite');
+
+  if (needsConnectionString) {
+    dbRegistration += `
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Connection string 'DefaultConnection' was not found.");
+`;
+  }
 
   if (config.orm === 'efcore' || config.orm === 'efcore-dapper') {
     usings.push('using Microsoft.EntityFrameworkCore;');
@@ -366,9 +404,6 @@ async function writeInfrastructureDi(targetDir, pascalName, config) {
     if (config.database === 'sqlite') efMethod = 'UseSqlite';
 
     dbRegistration += `
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("Connection string 'DefaultConnection' was not found.");
-
         services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
         {
             options.${efMethod}(connectionString);
@@ -391,13 +426,19 @@ async function writeInfrastructureDi(targetDir, pascalName, config) {
   if (config.backgroundJobs === 'hangfire') {
     usings.push('using Hangfire;');
     let storageMethod = 'UseSqlServerStorage(connectionString)';
-    if (config.database === 'postgresql') storageMethod = 'UsePostgreSqlStorage(connectionString)';
-    if (config.database === 'sqlite') storageMethod = 'UseMemoryStorage()';
+    if (config.database === 'postgresql') {
+      usings.push('using Hangfire.PostgreSql;');
+      storageMethod = 'UsePostgreSqlStorage(connectionString)';
+    }
+    if (config.database === 'sqlite') {
+      usings.push('using Hangfire.MemoryStorage;');
+      storageMethod = 'UseMemoryStorage()';
+    }
 
     dbRegistration += `
-        services.AddHangfire(config =>
+        services.AddHangfire(hangfire =>
         {
-            config.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+            hangfire.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
                   .UseSimpleAssemblyNameTypeSerializer()
                   .UseRecommendedSerializerSettings()
                   .${storageMethod};
@@ -408,7 +449,7 @@ async function writeInfrastructureDi(targetDir, pascalName, config) {
 
   const distinctUsings = [...new Set(usings)].join('\n');
 
-  const content = `${distinctUsings}
+  return `${distinctUsings}
 
 namespace ${pascalName}.Infrastructure;
 
@@ -429,8 +470,15 @@ ${dbRegistration}
         IConfiguration configuration);
 }
 `;
+}
 
-  await writeFile(path.join(targetDir, 'Infrastructure', 'DependencyInjection.cs'), content);
+/**
+ * @param {string} targetDir
+ * @param {string} pascalName
+ * @param {object} config
+ */
+async function writeInfrastructureDi(targetDir, pascalName, config) {
+  await writeFile(path.join(targetDir, 'Infrastructure', 'DependencyInjection.cs'), renderInfrastructureDi(pascalName, config));
 }
 
 /**
@@ -459,23 +507,54 @@ async function writeApplicationDi(targetDir, pascalName, config) {
     diBody += '        services.AddAutoMapper(typeof(DependencyInjection).Assembly);\n';
   }
 
+  if (config.architecture === 'services') {
+    diBody += '        RegisterGeneratedApplicationServices(services);\n';
+  }
+
   const distinctUsings = [...new Set(usings)].join('\n');
+  const classKind = config.architecture === 'services' ? 'static partial class' : 'static class';
+  const partialHook = config.architecture === 'services'
+    ? `
+    static partial void RegisterGeneratedApplicationServices(IServiceCollection services);
+`
+    : '';
 
   const content = `${distinctUsings}
 
 namespace ${pascalName}.Application;
 
-public static class DependencyInjection
+public ${classKind} DependencyInjection
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
 ${diBody}
         return services;
     }
-}
+${partialHook}}
 `;
 
   await writeFile(path.join(targetDir, 'Application', 'DependencyInjection.cs'), content);
+
+  if (config.architecture === 'services') {
+    await writeFile(
+      path.join(targetDir, 'Application', 'DependencyInjection.Generated.g.cs'),
+      `// AUTO-GENERATED BY create-fullstack-feature
+// DO NOT EDIT MANUALLY
+
+using Microsoft.Extensions.DependencyInjection;
+
+namespace ${pascalName}.Application;
+
+public static partial class DependencyInjection
+{
+    static partial void RegisterGeneratedApplicationServices(IServiceCollection services)
+    {
+        // Feature generator appends service registrations here.
+    }
+}
+`,
+    );
+  }
 }
 
 /**

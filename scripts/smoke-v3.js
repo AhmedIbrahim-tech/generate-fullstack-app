@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { runCommand } from '../src/utils/command.js';
 import { run } from '../src/utils/package-manager.js';
 import { pathExists } from '../src/utils/filesystem.js';
+import { loadProjectLayout, backendFile, frontendFile } from './smoke-paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const generatorRoot = path.resolve(__dirname, '..');
@@ -75,56 +76,47 @@ function generateFeature(projectDir, featureName, fieldArgs, extraArgs = []) {
   );
 }
 
-async function buildBackend(projectDir) {
-  runCommand('dotnet', ['build', '--no-restore'], {
-    cwd: projectDir,
-    step: 'dotnet build',
-  });
-  // restore first if needed
+async function ensureBackendBuild(layout) {
+  runCommand('dotnet', ['restore'], { cwd: layout.backendDir, step: 'dotnet restore' });
+  runCommand('dotnet', ['build'], { cwd: layout.backendDir, step: 'dotnet build' });
 }
 
-async function ensureBackendBuild(projectDir) {
-  runCommand('dotnet', ['restore'], { cwd: projectDir, step: 'dotnet restore' });
-  runCommand('dotnet', ['build'], { cwd: projectDir, step: 'dotnet build' });
+async function buildFrontend(layout, framework) {
+  run('npm', 'build', { cwd: layout.frontendDir, step: `${framework} build` });
 }
 
-async function buildFrontend(projectDir, framework) {
-  const clientDir = path.join(projectDir, 'Client');
-  run('npm', 'build', { cwd: clientDir, step: `${framework} build` });
-}
-
-async function verifyProductArchitecture(projectDir, framework) {
+async function verifyProductArchitecture(layout, framework) {
   await assertExists(
-    path.join(projectDir, 'Domain', 'Entities', 'Product.cs'),
+    backendFile(layout, 'Domain', 'Entities', 'Product.cs'),
     'Domain Product entity',
   );
   await assertExists(
-    path.join(projectDir, 'Domain', 'Entities', 'Generated', 'Product.Relationships.g.cs'),
+    backendFile(layout, 'Domain', 'Entities', 'Generated', 'Product.Relationships.g.cs'),
     'Product relationships partial',
   );
   await assertExists(
-    path.join(projectDir, 'Domain', 'Enums', 'ProductStatus.cs'),
+    backendFile(layout, 'Domain', 'Enums', 'ProductStatus.cs'),
     'ProductStatus enum',
   );
   await assertExists(
-    path.join(projectDir, 'Domain', 'Entities', 'StoredFile.cs'),
+    backendFile(layout, 'Domain', 'Entities', 'StoredFile.cs'),
     'StoredFile entity',
   );
   await assertExists(
-    path.join(projectDir, 'Application', 'Features', 'Products'),
+    backendFile(layout, 'Application', 'Features', 'Products'),
     'Products application feature',
   );
   await assertExists(
-    path.join(projectDir, 'API', 'Controllers', 'ProductsController.cs'),
+    backendFile(layout, 'API', 'Controllers', 'ProductsController.cs'),
     'Products controller',
   );
   await assertExists(
-    path.join(projectDir, 'API', 'Routing', 'Router.Products.g.cs'),
+    backendFile(layout, 'API', 'Routing', 'Router.Products.g.cs'),
     'Router.Products',
   );
 
   const productCs = await fs.readFile(
-    path.join(projectDir, 'Domain', 'Entities', 'Product.cs'),
+    backendFile(layout, 'Domain', 'Entities', 'Product.cs'),
     'utf8',
   );
   if (!productCs.includes('CategoryId')) {
@@ -136,7 +128,7 @@ async function verifyProductArchitecture(projectDir, framework) {
   pass('Product FK + partial entity');
 
   const relCs = await fs.readFile(
-    path.join(projectDir, 'Domain', 'Entities', 'Generated', 'Product.Relationships.g.cs'),
+    backendFile(layout, 'Domain', 'Entities', 'Generated', 'Product.Relationships.g.cs'),
     'utf8',
   );
   if (!relCs.includes('ICollection<Tag>')) {
@@ -146,21 +138,20 @@ async function verifyProductArchitecture(projectDir, framework) {
 
   if (framework === 'angular') {
     await assertExists(
-      path.join(projectDir, 'Client', 'src', 'app', 'features', 'products'),
+      frontendFile(layout, 'src', 'app', 'features', 'products'),
       'Angular products feature',
     );
-    const featureRoot = path.join(projectDir, 'Client', 'src', 'app', 'features', 'products');
+    const featureRoot = frontendFile(layout, 'src', 'app', 'features', 'products');
     await assertExists(path.join(featureRoot, 'store', 'product.actions.ts'), 'NgRx actions');
     await assertExists(path.join(featureRoot, 'store', 'product.effects.ts'), 'NgRx effects');
-    const pkg = await fs.readFile(path.join(projectDir, 'Client', 'package.json'), 'utf8');
+    const pkg = await fs.readFile(frontendFile(layout, 'package.json'), 'utf8');
     if (pkg.includes('@reduxjs/toolkit') || pkg.includes('react-redux')) {
       throw new Error('Angular client leaked React Redux packages');
     }
     pass('Angular isolation');
   } else {
-    const thunks = path.join(
-      projectDir,
-      'Client',
+    const thunks = frontendFile(
+      layout,
       'src',
       'modules',
       'products',
@@ -169,20 +160,20 @@ async function verifyProductArchitecture(projectDir, framework) {
     );
     await assertExists(thunks, 'React slices/thunks');
     await assertMissing(
-      path.join(projectDir, 'Client', 'src', 'modules', 'products', 'thunks'),
+      frontendFile(layout, 'src', 'modules', 'products', 'thunks'),
       'Incorrect modules/products/thunks must not exist',
     );
     await assertExists(
-      path.join(projectDir, 'Client', 'src', 'shared', 'components', 'forms', 'LookupSelect.tsx'),
+      frontendFile(layout, 'src', 'shared', 'components', 'forms', 'LookupSelect.tsx'),
       'LookupSelect shared control',
     );
     await assertExists(
-      path.join(projectDir, 'Client', 'src', 'store', 'generated-reducers.ts'),
+      frontendFile(layout, 'src', 'store', 'generated-reducers.ts'),
       'generated reducers registry',
     );
 
     const reducers = await fs.readFile(
-      path.join(projectDir, 'Client', 'src', 'store', 'generated-reducers.ts'),
+      frontendFile(layout, 'src', 'store', 'generated-reducers.ts'),
       'utf8',
     );
     if (!reducers.includes('products')) {
@@ -192,16 +183,15 @@ async function verifyProductArchitecture(projectDir, framework) {
 
     if (framework === 'vite') {
       const routes = await fs.readFile(
-        path.join(projectDir, 'Client', 'src', 'app', 'router', 'generated-routes.tsx'),
+        frontendFile(layout, 'src', 'app', 'router', 'generated-routes.tsx'),
         'utf8',
       );
       if (!routes.includes('products')) {
         throw new Error('Vite routes missing products');
       }
       pass('Vite route registration');
-      const serverService = path.join(
-        projectDir,
-        'Client',
+      const serverService = frontendFile(
+        layout,
         'src',
         'modules',
         'products',
@@ -213,9 +203,8 @@ async function verifyProductArchitecture(projectDir, framework) {
 
     if (framework === 'next') {
       await assertExists(
-        path.join(
-          projectDir,
-          'Client',
+        frontendFile(
+          layout,
           'src',
           'app',
           '(dashboard)',
@@ -226,7 +215,7 @@ async function verifyProductArchitecture(projectDir, framework) {
         'Next dashboard products page',
       );
       await assertExists(
-        path.join(projectDir, 'Client', 'src', 'app', '(website)', 'products', 'page.tsx'),
+        frontendFile(layout, 'src', 'app', '(website)', 'products', 'page.tsx'),
         'Next public products page',
       );
     }
@@ -253,6 +242,7 @@ async function runMatrixEntry({ name, frontendArgs, framework }) {
 
   createProject(name, frontendArgs, outputDir);
   const projectDir = path.join(outputDir, name);
+  const layout = await loadProjectLayout(projectDir);
 
   // Dry-run must not mutate
   const before = await snapshotFiles(projectDir);
@@ -269,7 +259,7 @@ async function runMatrixEntry({ name, frontendArgs, framework }) {
   pass('Dry-run zero mutation');
 
   await generateAdvancedModel(projectDir);
-  await verifyProductArchitecture(projectDir, framework);
+  await verifyProductArchitecture(layout, framework);
 
   // Duplicate protection
   let refused = false;
@@ -285,10 +275,10 @@ async function runMatrixEntry({ name, frontendArgs, framework }) {
   }
   pass('Duplicate protection');
 
-  await ensureBackendBuild(projectDir);
+  await ensureBackendBuild(layout);
   pass(`${name} backend build`);
 
-  await buildFrontend(projectDir, framework);
+  await buildFrontend(layout, framework);
   pass(`${name} frontend build`);
 
   return projectDir;

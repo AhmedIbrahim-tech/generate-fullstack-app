@@ -160,6 +160,49 @@ function scalarDefault(view) {
  * @param {object} view
  */
 function scalarFormNode(view) {
+  if (view.forms === 'none') {
+    if (view.type === 'boolean') {
+      return `      <label className="flex items-center gap-2 text-sm text-zinc-800">
+        <input
+          type="checkbox"
+          className="h-4 w-4 rounded border-zinc-300"
+          checked={Boolean(values.${view.camel})}
+          onChange={(event) => onChange("${view.camel}", event.target.checked)}
+        />
+        ${view.label}
+      </label>`;
+    }
+
+    if (
+      view.type === 'int' ||
+      view.type === 'long' ||
+      view.type === 'decimal' ||
+      view.type === 'double'
+    ) {
+      const step = view.type === 'int' || view.type === 'long' ? '1' : 'any';
+      return `      <label className="flex flex-col gap-1 text-sm text-zinc-800">
+        ${view.label}
+        <input
+          type="number"
+          step="${step}"
+          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
+          value={values.${view.camel} ?? ""}
+          onChange={(event) => onChange("${view.camel}", event.target.value === "" ? null : Number(event.target.value))}
+        />
+      </label>`;
+    }
+
+    return `      <label className="flex flex-col gap-1 text-sm text-zinc-800">
+        ${view.label}
+        <input
+          type="${view.type === 'DateTime' || view.type === 'DateTimeOffset' ? 'datetime-local' : 'text'}"
+          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
+          value={values.${view.camel} ?? ""}
+          onChange={(event) => onChange("${view.camel}", event.target.value)}
+        />
+      </label>`;
+  }
+
   const errorExpr = `form.formState.errors.${view.camel}?.message`;
 
   if (view.type === 'boolean') {
@@ -236,7 +279,17 @@ function scalarFormNode(view) {
  * Wrap a custom control in a react-hook-form Controller.
  * @param {object} options
  */
-function controllerNode({ name, label, control }) {
+function controllerNode({ name, label, control, forms }) {
+  if (forms === 'none') {
+    const bound = control
+      .replaceAll('field.value', `values.${name}`)
+      .replaceAll('field.onChange', `(value) => onChange(${JSON.stringify(name)}, value)`);
+    return `      <div className="flex flex-col gap-1 text-sm text-zinc-800">
+        <span>${label}</span>
+${bound}
+      </div>`;
+  }
+
   return `      <Controller
         control={form.control}
         name="${name}"
@@ -265,16 +318,17 @@ function enumValueLiteral(value) {
  * Produce a descriptor bundling everything the generators need for a field.
  * @param {object} field
  */
-export function describeField(field) {
+export function describeField(field, options = {}) {
   const kind = classifyField(field);
   const name = field.name;
   const camel = toCamelCase(name);
   const label = toLabel(name);
   const required = isRequired(field);
   const nullable = isNullable(field);
+  const forms = options.forms === 'none' ? 'none' : 'rhf';
 
   /** @type {ReturnType<typeof baseDescriptor>} */
-  const descriptor = baseDescriptor({ kind, name, camel, label, required, nullable });
+  const descriptor = baseDescriptor({ kind, name, camel, label, required, nullable, forms });
 
   if (kind === 'scalar') {
     return scalarDescriptor(descriptor, field);
@@ -332,6 +386,7 @@ function scalarDescriptor(descriptor, field) {
     label: descriptor.label,
     required: descriptor.required,
     nullable: descriptor.nullable,
+    forms: descriptor.forms,
     minLength: field.minLength ?? null,
     maxLength: field.maxLength ?? null,
     minimum: field.minimum ?? null,
@@ -423,9 +478,10 @@ export type ${enumName} = (typeof ${optionsConst})[number]["value"];`;
 
   descriptor.controls.controller = true;
   descriptor.controls.enumSelect = true;
-  descriptor.formNode = controllerNode({
-    name: camel,
-    label: descriptor.label,
+    descriptor.formNode = controllerNode({
+      name: camel,
+      label: descriptor.label,
+      forms: descriptor.forms,
     control: `            <EnumSelect
               value={field.value}
               onChange={field.onChange}
@@ -473,6 +529,7 @@ function relationshipDescriptor(descriptor, field) {
     descriptor.formNode = controllerNode({
       name: idsCamel,
       label,
+      forms: descriptor.forms,
       control: `            <MultiLookupSelect
               value={field.value}
               onChange={field.onChange}
@@ -508,6 +565,7 @@ function relationshipDescriptor(descriptor, field) {
   descriptor.formNode = controllerNode({
     name: idCamel,
     label,
+    forms: descriptor.forms,
     control: `            <LookupSelect
               value={field.value}
               onChange={field.onChange}
@@ -573,6 +631,7 @@ function mediaDescriptor(descriptor, field) {
     descriptor.formNode = controllerNode({
       name: idsCamel,
       label,
+      forms: descriptor.forms,
       control: `            <${componentName}
               value={field.value}
               onChange={field.onChange}
@@ -601,6 +660,7 @@ function mediaDescriptor(descriptor, field) {
   descriptor.formNode = controllerNode({
     name: idCamel,
     label,
+    forms: descriptor.forms,
     control: `            <${componentName}
               value={field.value}
               onChange={field.onChange}${extraPropsText}

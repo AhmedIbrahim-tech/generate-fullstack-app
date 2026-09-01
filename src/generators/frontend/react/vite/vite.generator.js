@@ -5,7 +5,7 @@ import { add, addDev, install, packageManagerUserAgent } from '../../../../utils
 import { copyTemplate, pathExists, templatesRoot, writeFile } from '../../../../utils/filesystem.js';
 import { logger } from '../../../../utils/logger.js';
 import { STAGING_DIR_NAME, promoteStagingClient } from '../../client-setup.js';
-import { installReactCommonPackages, overlayReactCommon } from '../react-common.generator.js';
+import { installReactCommonPackages, overlayReactCommon, writeReactProviders, finalizeReactLanguage } from '../react-common.generator.js';
 
 /**
  * @param {object} options
@@ -87,6 +87,8 @@ export async function generateViteFrontend(options) {
     options.replacements,
   );
 
+  await writeReactProviders(clientDir, frontend);
+
   if (isTailwind) {
     await ensureTailwindCss(clientDir);
   } else {
@@ -97,9 +99,13 @@ export async function generateViteFrontend(options) {
     await ensureTsconfigPaths(clientDir);
   }
 
-  const defaultApp = path.join(clientDir, 'src', 'App.tsx');
-  if (await pathExists(defaultApp)) {
-    await fs.unlink(defaultApp);
+  const defaultAppTs = path.join(clientDir, 'src', 'App.tsx');
+  const defaultAppJs = path.join(clientDir, 'src', 'App.jsx');
+  if (await pathExists(defaultAppTs)) {
+    await fs.unlink(defaultAppTs);
+  }
+  if (await pathExists(defaultAppJs)) {
+    await fs.unlink(defaultAppJs);
   }
   const defaultAppCss = path.join(clientDir, 'src', 'App.css');
   if (await pathExists(defaultAppCss)) {
@@ -111,6 +117,8 @@ export async function generateViteFrontend(options) {
     await writePlainViteHome(clientDir, options.replacements);
     await stripI18nImport(clientDir);
   }
+
+  await finalizeReactLanguage(clientDir, frontend);
 }
 
 async function ensureTailwindCss(clientDir) {
@@ -162,38 +170,34 @@ function stripJsonc(text) {
 async function writePlainViteHome(clientDir, replacements) {
   await writeFile(
     path.join(clientDir, 'src', 'app', 'pages', 'HomePage.tsx'),
-    `import { Link } from "react-router-dom";
+    `import type { ReactElement } from "react";
+import { Link } from "react-router-dom";
+import { HomeLanding } from "@/shared/components/marketing/HomeLanding";
+import type { AppLinkProps } from "@/shared/navigation/app-link";
+
+function AppLink({ href, className, children, onClick }: AppLinkProps): ReactElement {
+  return (
+    <Link to={href} className={className} onClick={onClick}>
+      {children}
+    </Link>
+  );
+}
 
 export function HomePage() {
-  return (
-    <main className="mx-auto flex min-h-[calc(100vh-160px)] max-w-4xl flex-col items-center justify-center gap-6 px-6 py-16 text-center">
-      <h1 className="text-4xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-100 sm:text-5xl">
-        ${replacements.__DISPLAY_NAME__}
-      </h1>
-      <p className="max-w-xl text-lg text-zinc-600 dark:text-zinc-400">
-        Clean, scalable full-stack application built with production-ready architecture.
-      </p>
-      <div className="flex gap-4">
-        <Link className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900" to="/examples">
-          Example Module
-        </Link>
-        <Link className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300" to="/dashboard">
-          Dashboard
-        </Link>
-      </div>
-    </main>
-  );
+  return <HomeLanding productName="${replacements.__DISPLAY_NAME__}" Link={AppLink} />;
 }
 `,
   );
 }
 
 async function stripI18nImport(clientDir) {
-  const mainPath = path.join(clientDir, 'src', 'main.tsx');
-  if (!(await pathExists(mainPath))) {
-    return;
-  }
+  for (const name of ['main.tsx', 'main.jsx']) {
+    const mainPath = path.join(clientDir, 'src', name);
+    if (!(await pathExists(mainPath))) {
+      continue;
+    }
 
-  const contents = await fs.readFile(mainPath, 'utf8');
-  await fs.writeFile(mainPath, contents.replace('import "@/i18n";\n', ''), 'utf8');
+    const contents = await fs.readFile(mainPath, 'utf8');
+    await fs.writeFile(mainPath, contents.replace('import "@/i18n";\n', ''), 'utf8');
+  }
 }

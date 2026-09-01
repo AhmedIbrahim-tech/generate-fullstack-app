@@ -3,6 +3,18 @@ import { validateFeatureName } from './utils/safe-generation.js';
 import { normalizeField } from './fields/field-types.js';
 import { readPackageMeta } from '../cli/arguments.js';
 import { resolveProjectPaths } from '../utils/project-paths.js';
+import {
+  resolveBackendArchitecture,
+  resolveBackendDatabase,
+  resolveBackendOrm,
+} from './backend/architecture.js';
+import {
+  resolveBackendAuthentication,
+  resolveBackendEnabled,
+  resolveBackendMapping,
+  resolveFrontendProfile,
+  resolvePermissionsEnabled,
+} from './feature-profile.js';
 
 /**
  * @param {object} input
@@ -68,6 +80,44 @@ export function buildFeatureConfig(input) {
 
   const pkg = readPackageMeta();
   const paths = input.paths ?? resolveProjectPaths(input.manifest ?? {});
+  const manifest = input.manifest ?? {};
+  const architecture = resolveBackendArchitecture({
+    architecture: input.architecture,
+    manifest,
+  });
+  const orm = resolveBackendOrm({
+    orm: input.orm,
+    manifest,
+  });
+  const database = resolveBackendDatabase({
+    database: input.database,
+    manifest,
+  });
+  const authentication = resolveBackendAuthentication({
+    authentication: input.authentication,
+    manifest,
+  });
+  const mapping = resolveBackendMapping({
+    mapping: input.mapping,
+    manifest,
+  });
+  const permissions = resolvePermissionsEnabled({
+    permissions: input.permissions,
+    manifest,
+  });
+  const backendEnabled = resolveBackendEnabled({
+    backend: input.backend,
+    manifest,
+  });
+  const frontend = resolveFrontendProfile({
+    frontend: input.frontend,
+    frontendStrategy: input.frontendStrategy,
+    manifest,
+  });
+  const projectName =
+    input.projectName
+    ?? manifest.projectName
+    ?? null;
 
   return {
     feature: names,
@@ -78,15 +128,34 @@ export function buildFeatureConfig(input) {
     labels,
     featureType,
     paths,
+    architecture,
+    orm,
+    database,
+    authentication,
+    mapping,
+    permissions,
+    backend: {
+      enabled: backendEnabled,
+      architecture,
+      orm,
+      database,
+      authentication,
+      mapping,
+      permissions,
+    },
+    frontend,
     dryRun: Boolean(input.dryRun),
     migration: Boolean(input.migration),
     force: Boolean(input.force),
     generatePermissions: Boolean(input.generatePermissions),
     localizeContent: Boolean(input.localizeContent),
     projectRoot: input.projectRoot,
-    projectName: input.projectName,
-    packageManager: input.packageManager ?? 'npm',
-    frontendStrategy: input.frontendStrategy,
+    projectName,
+    packageManager: input.packageManager ?? manifest.packageManager ?? 'npm',
+    frontendStrategy: input.frontendStrategy ?? {
+      library: frontend.library,
+      framework: frontend.framework,
+    },
     generatorVersion: pkg.version,
   };
 }

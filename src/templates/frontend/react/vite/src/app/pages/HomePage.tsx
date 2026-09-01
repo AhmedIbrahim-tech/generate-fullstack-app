@@ -1,20 +1,28 @@
+import type { ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import { HomeLanding } from "@/shared/components/marketing/HomeLanding";
+import type { AppLinkProps } from "@/shared/navigation/app-link";
+
+function AppLink({ href, className, children, onClick }: AppLinkProps): ReactElement {
+  return (
+    <Link to={href} className={className} onClick={onClick}>
+      {children}
+    </Link>
+  );
+}
 
 export function HomePage() {
   const { t } = useTranslation();
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-16">
-      <h1 className="text-3xl font-semibold">{t("home.title")}</h1>
-      <p className="text-lg text-zinc-600">{t("home.description")}</p>
-      <p className="text-sm text-zinc-500">
-        This Vite app is a client-side SPA. Interactive state uses Redux Toolkit
-        async thunks. There are no Server Components.
-      </p>
-      <Link className="underline" to="/examples">
-        Example module
-      </Link>
-    </main>
+    <HomeLanding
+      productName="__DISPLAY_NAME__"
+      headline={t("home.title")}
+      description={t("home.description")}
+      primaryLabel={t("home.ctaPrimary")}
+      secondaryLabel={t("home.ctaSecondary")}
+      Link={AppLink}
+    />
   );
 }

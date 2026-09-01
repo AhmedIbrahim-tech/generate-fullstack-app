@@ -1,10 +1,26 @@
+import type { ReactElement } from "react";
+import { Link } from "react-router-dom";
+import { AuthFrame } from "@/shared/components/auth/AuthFrame";
+import { AuthSignInForm } from "@/shared/components/auth/AuthSignInForm";
+import type { AppLinkProps } from "@/shared/navigation/app-link";
+
+function AppLink({ href, className, children, onClick }: AppLinkProps): ReactElement {
+  return (
+    <Link to={href} className={className} onClick={onClick}>
+      {children}
+    </Link>
+  );
+}
+
 export function LoginPage() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col gap-4 px-6 py-16">
-      <h1 className="text-2xl font-semibold">Sign in</h1>
-      <p className="text-zinc-600">
-        Authentication is intentionally not implemented in this starter phase.
-      </p>
-    </main>
+    <AuthFrame
+      productName="__DISPLAY_NAME__"
+      title="Sign in"
+      description="Enter your credentials to continue."
+      Link={AppLink}
+    >
+      <AuthSignInForm Link={AppLink} />
+    </AuthFrame>
   );
 }

@@ -7,56 +7,55 @@ import {
   selectExampleError,
   selectExampleItems,
 } from "../store/example.selectors";
+import { PageHeaderComponent } from "../../../shared/components/page-header.component";
+import { EmptyStateComponent } from "../../../shared/components/empty-state.component";
+import { ErrorStateComponent } from "../../../shared/components/error-state.component";
 
 @Component({
   selector: "app-examples-page",
   standalone: true,
-  imports: [ReactiveFormsModule, ExampleCardComponent],
+  imports: [ReactiveFormsModule, ExampleCardComponent, PageHeaderComponent, EmptyStateComponent, ErrorStateComponent],
   template: `
-    <main class="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-16">
-      <header>
-        <h1 class="text-3xl font-semibold">Examples</h1>
-        <p class="mt-2 text-zinc-600">
-          Page → NgRx action → effect → feature service → HttpClient. V1.1 does
-          not generate a backend Example endpoint; do not expect these requests
-          to succeed until that API exists.
-        </p>
-      </header>
-
-      <button
-        type="button"
-        class="w-fit rounded-md bg-zinc-900 px-4 py-2 text-sm text-white"
-        (click)="load()"
+    <div class="ui-page">
+      <app-page-header
+        title="Architecture sample"
+        description="Page → NgRx → feature service → HttpClient. This slice exists so the generated client has a working module before you add domain features."
       >
-        Load examples
-      </button>
+        <button type="button" class="ui-btn ui-btn-ghost" (click)="load()">Load sample</button>
+      </app-page-header>
 
       @if (error(); as message) {
-        <p class="text-sm text-red-600" role="alert">{{ message }}</p>
+        <app-error-state [description]="message" />
       }
 
-      <form class="flex flex-col gap-3 rounded-lg border border-zinc-200 p-4" [formGroup]="form" (ngSubmit)="create()">
-        <label class="flex flex-col gap-1 text-sm">
+      <form class="ui-card" style="margin: 1.2rem 0" [formGroup]="form" (ngSubmit)="create()">
+        <h3>Create a sample record</h3>
+        <label class="ui-field">
           Name
-          <input class="rounded-md border border-zinc-300 px-3 py-2" formControlName="name" />
+          <input class="ui-input" formControlName="name" />
         </label>
-        <label class="flex flex-col gap-1 text-sm">
+        <label class="ui-field">
           Description
-          <textarea class="rounded-md border border-zinc-300 px-3 py-2" rows="3" formControlName="description"></textarea>
+          <textarea class="ui-input" rows="3" formControlName="description"></textarea>
         </label>
-        <button type="submit" class="w-fit rounded-md border border-zinc-300 px-4 py-2 text-sm">
-          Create example
-        </button>
+        <button type="submit" class="ui-btn ui-btn-primary">Save</button>
       </form>
 
-      <ul class="flex flex-col gap-3">
-        @for (item of items(); track item.id) {
-          <li>
-            <app-example-card [example]="item" />
-          </li>
-        }
-      </ul>
-    </main>
+      @if (items().length === 0) {
+        <app-empty-state
+          title="No sample records"
+          description="The sample API is optional. Generate a real feature when you are ready to persist domain data."
+        />
+      } @else {
+        <ul class="ui-list">
+          @for (item of items(); track item.id) {
+            <li>
+              <app-example-card [example]="item" />
+            </li>
+          }
+        </ul>
+      }
+    </div>
   `,
 })
 export class ExamplesPageComponent {

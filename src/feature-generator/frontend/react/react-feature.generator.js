@@ -1,6 +1,18 @@
 import path from 'node:path';
 import { describeField } from './field-view.js';
 import { getFrontendFilePath } from '../../../utils/project-paths.js';
+import { frontendSourceName } from '../emit-language.js';
+import {
+  isNoneState,
+  isZustandState,
+  usesFetchClient,
+  usesReactHookForm,
+} from '../../feature-profile.js';
+import {
+  renderLocalController,
+  renderZustandController,
+  renderZustandStore,
+} from './react-feature-state.js';
 
 /**
  * Plan every file that makes up a React feature module under Frontend/ (or root).
@@ -10,105 +22,126 @@ import { getFrontendFilePath } from '../../../utils/project-paths.js';
 export function planReactModuleFiles(config) {
   const ctx = buildContext(config);
   const base = getFrontendFilePath(config, 'src', 'modules', ctx.kebabPlural);
+  const src = (name) => frontendSourceName(config, name);
   /** @type {{ relativePath: string, contents: string }[]} */
   const files = [];
 
   files.push({
-    relativePath: path.join(base, 'types', `${ctx.camel}.types.ts`),
+    relativePath: path.join(base, 'types', src(`${ctx.camel}.types.ts`)),
     contents: renderTypes(ctx),
   });
+  if (ctx.forms === 'rhf') {
+    files.push({
+      relativePath: path.join(base, 'schemas', src(`${ctx.camel}.schema.ts`)),
+      contents: renderSchema(ctx),
+    });
+  }
   files.push({
-    relativePath: path.join(base, 'schemas', `${ctx.camel}.schema.ts`),
-    contents: renderSchema(ctx),
-  });
-  files.push({
-    relativePath: path.join(base, 'services', `${ctx.camel}.routes.ts`),
+    relativePath: path.join(base, 'services', src(`${ctx.camel}.routes.ts`)),
     contents: renderRoutes(ctx),
   });
   files.push({
-    relativePath: path.join(base, 'services', `${ctx.camel}.service.ts`),
+    relativePath: path.join(base, 'services', src(`${ctx.camel}.service.ts`)),
     contents: renderService(ctx),
   });
 
-  if (ctx.ops.search || ctx.ops.list) {
+  if (ctx.state === 'redux') {
+    if (ctx.ops.search || ctx.ops.list) {
+      files.push({
+        relativePath: path.join(base, 'slices', 'thunks', src(`get${ctx.Plural}.thunk.ts`)),
+        contents: renderGetListThunk(ctx),
+      });
+    }
+    if (ctx.ops.getById) {
+      files.push({
+        relativePath: path.join(base, 'slices', 'thunks', src(`get${ctx.Singular}ById.thunk.ts`)),
+        contents: renderGetByIdThunk(ctx),
+      });
+    }
+    if (ctx.ops.create) {
+      files.push({
+        relativePath: path.join(base, 'slices', 'thunks', src(`create${ctx.Singular}.thunk.ts`)),
+        contents: renderCreateThunk(ctx),
+      });
+    }
+    if (ctx.ops.update) {
+      files.push({
+        relativePath: path.join(base, 'slices', 'thunks', src(`update${ctx.Singular}.thunk.ts`)),
+        contents: renderUpdateThunk(ctx),
+      });
+    }
+    if (ctx.ops.delete) {
+      files.push({
+        relativePath: path.join(base, 'slices', 'thunks', src(`delete${ctx.Singular}.thunk.ts`)),
+        contents: renderDeleteThunk(ctx),
+      });
+    }
+    if (ctx.ops.restore) {
+      files.push({
+        relativePath: path.join(base, 'slices', 'thunks', src(`restore${ctx.Singular}.thunk.ts`)),
+        contents: renderRestoreThunk(ctx),
+      });
+    }
     files.push({
-      relativePath: path.join(base, 'slices', 'thunks', `get${ctx.Plural}.thunk.ts`),
-      contents: renderGetListThunk(ctx),
+      relativePath: path.join(base, 'slices', src(`${ctx.camelPlural}.slice.ts`)),
+      contents: renderSlice(ctx),
     });
   }
-  if (ctx.ops.getById) {
+
+  if (ctx.state === 'zustand') {
     files.push({
-      relativePath: path.join(base, 'slices', 'thunks', `get${ctx.Singular}ById.thunk.ts`),
-      contents: renderGetByIdThunk(ctx),
-    });
-  }
-  if (ctx.ops.create) {
-    files.push({
-      relativePath: path.join(base, 'slices', 'thunks', `create${ctx.Singular}.thunk.ts`),
-      contents: renderCreateThunk(ctx),
-    });
-  }
-  if (ctx.ops.update) {
-    files.push({
-      relativePath: path.join(base, 'slices', 'thunks', `update${ctx.Singular}.thunk.ts`),
-      contents: renderUpdateThunk(ctx),
-    });
-  }
-  if (ctx.ops.delete) {
-    files.push({
-      relativePath: path.join(base, 'slices', 'thunks', `delete${ctx.Singular}.thunk.ts`),
-      contents: renderDeleteThunk(ctx),
-    });
-  }
-  if (ctx.ops.restore) {
-    files.push({
-      relativePath: path.join(base, 'slices', 'thunks', `restore${ctx.Singular}.thunk.ts`),
-      contents: renderRestoreThunk(ctx),
+      relativePath: path.join(base, 'store', src(`use${ctx.Plural}Store.ts`)),
+      contents: renderZustandStore(ctx),
     });
   }
 
   files.push({
-    relativePath: path.join(base, 'slices', `${ctx.camelPlural}.slice.ts`),
-    contents: renderSlice(ctx),
-  });
-  files.push({
-    relativePath: path.join(base, 'hooks', `use${ctx.Singular}Form.ts`),
+    relativePath: path.join(base, 'hooks', src(`use${ctx.Singular}Form.ts`)),
     contents: renderFormHook(ctx),
   });
   files.push({
-    relativePath: path.join(base, 'hooks', `use${ctx.Plural}Controller.ts`),
-    contents: renderControllerHook(ctx),
+    relativePath: path.join(base, 'hooks', src(`use${ctx.Plural}Controller.ts`)),
+    contents:
+      ctx.state === 'zustand'
+        ? renderZustandController(ctx)
+        : ctx.state === 'none'
+          ? renderLocalController(ctx)
+          : renderControllerHook(ctx),
   });
   files.push({
-    relativePath: path.join(base, 'components', `${ctx.Singular}Form.tsx`),
+    relativePath: path.join(base, 'components', src(`${ctx.Singular}Form.tsx`)),
     contents: renderFormComponent(ctx),
   });
   files.push({
-    relativePath: path.join(base, 'components', `${ctx.Singular}Table.tsx`),
+    relativePath: path.join(base, 'components', src(`${ctx.Singular}Table.tsx`)),
     contents: renderTableComponent(ctx),
   });
   files.push({
-    relativePath: path.join(base, 'components', `${ctx.Singular}Filters.tsx`),
+    relativePath: path.join(base, 'components', src(`${ctx.Singular}Filters.tsx`)),
     contents: renderFiltersComponent(ctx),
   });
   files.push({
-    relativePath: path.join(base, 'pages', `${ctx.Plural}Page.tsx`),
+    relativePath: path.join(base, 'pages', src(`${ctx.Plural}Page.tsx`)),
     contents: renderListPage(ctx),
   });
   if (ctx.ops.create) {
     files.push({
-      relativePath: path.join(base, 'pages', `Create${ctx.Singular}Page.tsx`),
+      relativePath: path.join(base, 'pages', src(`Create${ctx.Singular}Page.tsx`)),
       contents: renderCreatePage(ctx),
     });
   }
   if (ctx.ops.update) {
     files.push({
-      relativePath: path.join(base, 'pages', `Edit${ctx.Singular}Page.tsx`),
+      relativePath: path.join(base, 'pages', src(`Edit${ctx.Singular}Page.tsx`)),
       contents: renderEditPage(ctx),
     });
   }
   files.push({
-    relativePath: path.join(base, 'index.ts'),
+    relativePath: path.join(base, 'pages', src(`${ctx.Plural}PublicPage.tsx`)),
+    contents: renderPublicListPage(ctx),
+  });
+  files.push({
+    relativePath: path.join(base, src('index.ts')),
     contents: renderIndex(ctx),
   });
 
@@ -128,9 +161,14 @@ function buildContext(config) {
     kebabPluralName: kebabPlural,
   } = config.feature;
 
-  const framework = config.frontendStrategy?.framework === 'vite' ? 'vite' : 'next';
+  const framework = config.frontend?.framework === 'vite' || config.frontendStrategy?.framework === 'vite'
+    ? 'vite'
+    : 'next';
   const ops = config.operations;
-  const fields = (config.fields ?? []).map((field) => describeField(field));
+  const forms = usesReactHookForm(config) ? 'rhf' : 'none';
+  const fields = (config.fields ?? []).map((field) => describeField(field, { forms }));
+  const state = isZustandState(config) ? 'zustand' : isNoneState(config) ? 'none' : 'redux';
+  const httpClient = usesFetchClient(config) ? 'fetch' : 'axios';
 
   const needsStoredFile = fields.some((field) => field.needsStoredFile);
   const enumDecls = fields
@@ -150,6 +188,9 @@ function buildContext(config) {
     ops,
     fields,
     framework,
+    state,
+    httpClient,
+    forms,
     needsStoredFile,
     enumDecls,
     enumOptionConsts,
@@ -368,7 +409,18 @@ function renderService(ctx) {
   const methods = [];
 
   if (ctx.ops.search || ctx.ops.list) {
-    methods.push(`  async search(
+    methods.push(
+      ctx.httpClient === 'fetch'
+        ? `  async search(
+    request: ${ctx.Singular}SearchRequest,
+  ): Promise<PaginationResult<${ctx.Singular}>> {
+    const { data } = await apiClient.post<PaginationResult<${ctx.Singular}>>(
+      ${ctx.camel}ApiRoutes.search,
+      request,
+    );
+    return normalizePagination(data);
+  },`
+        : `  async search(
     request: ${ctx.Singular}SearchRequest,
   ): Promise<PaginationResult<${ctx.Singular}>> {
     const response = await apiClient.post<PaginationResult<${ctx.Singular}>>(
@@ -376,31 +428,56 @@ function renderService(ctx) {
       request,
     );
     return normalizePagination(response.data);
-  },`);
+  },`,
+    );
   }
 
   if (ctx.ops.getById) {
-    methods.push(`  async getById(id: string): Promise<${ctx.Singular}> {
+    methods.push(
+      ctx.httpClient === 'fetch'
+        ? `  async getById(id: string): Promise<${ctx.Singular}> {
+    const { data } = await apiClient.get<${ctx.Singular}>(${ctx.camel}ApiRoutes.byId(id));
+    return data;
+  },`
+        : `  async getById(id: string): Promise<${ctx.Singular}> {
     const response = await apiClient.get<${ctx.Singular}>(${ctx.camel}ApiRoutes.byId(id));
     return response.data;
-  },`);
+  },`,
+    );
   }
 
   if (ctx.ops.create) {
-    methods.push(`  async create(input: Create${ctx.Singular}Request): Promise<${ctx.Singular}> {
+    methods.push(
+      ctx.httpClient === 'fetch'
+        ? `  async create(input: Create${ctx.Singular}Request): Promise<${ctx.Singular}> {
+    const { data } = await apiClient.post<${ctx.Singular}>(${ctx.camel}ApiRoutes.root, input);
+    return data;
+  },`
+        : `  async create(input: Create${ctx.Singular}Request): Promise<${ctx.Singular}> {
     const response = await apiClient.post<${ctx.Singular}>(${ctx.camel}ApiRoutes.root, input);
     return response.data;
-  },`);
+  },`,
+    );
   }
 
   if (ctx.ops.update) {
-    methods.push(`  async update(input: Update${ctx.Singular}Request): Promise<${ctx.Singular}> {
+    methods.push(
+      ctx.httpClient === 'fetch'
+        ? `  async update(input: Update${ctx.Singular}Request): Promise<${ctx.Singular}> {
+    const { data } = await apiClient.put<${ctx.Singular}>(
+      ${ctx.camel}ApiRoutes.byId(input.id),
+      input,
+    );
+    return data;
+  },`
+        : `  async update(input: Update${ctx.Singular}Request): Promise<${ctx.Singular}> {
     const response = await apiClient.put<${ctx.Singular}>(
       ${ctx.camel}ApiRoutes.byId(input.id),
       input,
     );
     return response.data;
-  },`);
+  },`,
+    );
   }
 
   if (ctx.ops.delete) {
@@ -410,10 +487,17 @@ function renderService(ctx) {
   }
 
   if (ctx.ops.restore) {
-    methods.push(`  async restore(id: string): Promise<${ctx.Singular}> {
+    methods.push(
+      ctx.httpClient === 'fetch'
+        ? `  async restore(id: string): Promise<${ctx.Singular}> {
+    const { data } = await apiClient.post<${ctx.Singular}>(${ctx.camel}ApiRoutes.restore(id));
+    return data;
+  },`
+        : `  async restore(id: string): Promise<${ctx.Singular}> {
     const response = await apiClient.post<${ctx.Singular}>(${ctx.camel}ApiRoutes.restore(id));
     return response.data;
-  },`);
+  },`,
+    );
   }
 
   const paginationImport =
@@ -792,6 +876,42 @@ export function use${ctx.Singular}Form() {
 
   const defaults = ctx.fields.flatMap((field) => field.defaultLines).join('\n');
 
+  if (ctx.forms === 'none') {
+    return `"use client";
+
+import { useState } from "react";
+import type { Create${ctx.Singular}Request } from "../types/${ctx.camel}.types";
+
+const defaultValues: Create${ctx.Singular}Request = {
+${defaults}
+};
+
+export function use${ctx.Singular}Form(
+  initialValues?: Partial<Create${ctx.Singular}Request>,
+) {
+  const [values, setValues] = useState<Create${ctx.Singular}Request>({
+    ...defaultValues,
+    ...initialValues,
+  });
+
+  const onChange = (name: keyof Create${ctx.Singular}Request, value: unknown) => {
+    setValues((current) => ({ ...current, [name]: value }));
+  };
+
+  const reset = (next?: Partial<Create${ctx.Singular}Request>) => {
+    setValues({
+      ...defaultValues,
+      ...next,
+    });
+  };
+
+  return { values, onChange, reset };
+}
+
+export { defaultValues as ${ctx.camel}FormDefaults };
+`;
+  }
+
   return `"use client";
 
 import { useForm } from "react-hook-form";
@@ -1018,10 +1138,6 @@ function renderFormComponent(ctx) {
   const needsImage = ctx.fields.some((field) => field.controls.imageUpload);
   const needsFile = ctx.fields.some((field) => field.controls.fileUpload);
 
-  const rhfImport = needsController
-    ? `import { Controller, type UseFormReturn } from "react-hook-form";`
-    : `import type { UseFormReturn } from "react-hook-form";`;
-
   /** @type {string[]} */
   const controlImports = [];
   if (needsLookup) {
@@ -1057,6 +1173,68 @@ function renderFormComponent(ctx) {
 
   const controlImportBlock =
     controlImports.length > 0 ? `${controlImports.join('\n')}\n` : '';
+
+  if (ctx.forms === 'none') {
+    return `"use client";
+
+${controlImportBlock}${enumOptionImport}import type { Create${ctx.Singular}Request } from "../types/${ctx.camel}.types";
+
+type ${ctx.Singular}FormProps = {
+  values: Create${ctx.Singular}Request;
+  onChange: (name: keyof Create${ctx.Singular}Request, value: unknown) => void;
+  onSubmit: (values: Create${ctx.Singular}Request) => void | Promise<void>;
+  submitLabel: string;
+  isSubmitting?: boolean;
+  onCancel?: () => void;
+};
+
+export function ${ctx.Singular}Form({
+  values,
+  onChange,
+  onSubmit,
+  submitLabel,
+  isSubmitting = false,
+  onCancel,
+}: ${ctx.Singular}FormProps) {
+  return (
+    <form
+      className="flex max-w-xl flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void onSubmit(values);
+      }}
+      noValidate
+    >
+${fields}
+
+      <div className="mt-2 flex gap-3">
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="rounded-md bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-60"
+        >
+          {isSubmitting ? "Saving..." : submitLabel}
+        </button>
+        {onCancel ? (
+          <button
+            type="button"
+            className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-800"
+            onClick={onCancel}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </button>
+        ) : null}
+      </div>
+    </form>
+  );
+}
+`;
+  }
+
+  const rhfImport = needsController
+    ? `import { Controller, type UseFormReturn } from "react-hook-form";`
+    : `import type { UseFormReturn } from "react-hook-form";`;
 
   return `"use client";
 
@@ -1491,7 +1669,7 @@ export default function Create${ctx.Singular}Page() {
       </header>
 
       <${ctx.Singular}Form
-        form={form}
+        ${ctx.forms === 'none' ? 'values={form.values}\n        onChange={form.onChange}' : 'form={form}'}
         submitLabel="Create ${ctx.enSingular}"
         isSubmitting={isSubmitting}
         onCancel={() => {
@@ -1568,7 +1746,7 @@ ${resetFields}
         <p className="text-sm text-zinc-600">Loading ${ctx.enSingular.toLowerCase()}...</p>
       ) : (
         <${ctx.Singular}Form
-          form={form}
+          ${ctx.forms === 'none' ? 'values={form.values}\n          onChange={form.onChange}' : 'form={form}'}
           submitLabel="Save changes"
           isSubmitting={isSubmitting}
           onCancel={() => {
@@ -1598,14 +1776,102 @@ ${resetFields}
 }
 
 /**
+ * Public, read-only list used by website routes (Vite and shared module pages).
+ * @param {ReturnType<typeof buildContext>} ctx
+ */
+function renderPublicListPage(ctx) {
+  const fields = ctx.fields.slice(0, 3);
+
+  const cells = fields
+    .map(
+      (field) =>
+        `            <div>
+              <dt className="text-xs uppercase tracking-wide text-zinc-500">${field.publicLabel}</dt>
+              <dd className="mt-1 text-sm text-zinc-900">
+                ${field.publicValue}
+              </dd>
+            </div>`,
+    )
+    .join('\n');
+
+  const enumOptionConsts = Array.from(
+    new Set(fields.map((field) => field.publicNeedsOptions).filter(Boolean)),
+  );
+  const enumOptionImport =
+    enumOptionConsts.length > 0
+      ? `import { ${enumOptionConsts.join(', ')} } from "../types/${ctx.camel}.types";\n`
+      : '';
+
+  return `"use client";
+
+import { useEffect } from "react";
+import { use${ctx.Plural}Controller } from "../hooks/use${ctx.Plural}Controller";
+${enumOptionImport}import type { ${ctx.Singular} } from "../types/${ctx.camel}.types";
+
+export default function ${ctx.Plural}PublicPage() {
+  const { items, load, isLoading, error } = use${ctx.Plural}Controller();
+
+  useEffect(() => {
+    load?.({
+      page: 1,
+      pageSize: 20,
+    });
+  }, [load]);
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-8 px-6 py-16">
+      <header>
+        <h1 className="text-4xl font-semibold text-zinc-900">${ctx.enPlural}</h1>
+        <p className="mt-2 text-zinc-600">
+          Browse published ${ctx.enPlural.toLowerCase()}.
+        </p>
+      </header>
+
+      {error ? (
+        <p className="text-sm text-red-600" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      {isLoading ? (
+        <p className="text-sm text-zinc-600">Loading ${ctx.enPlural.toLowerCase()}...</p>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-zinc-600">No ${ctx.enPlural.toLowerCase()} available.</p>
+      ) : (
+        <ul className="flex flex-col gap-4">
+          {items.map((item: ${ctx.Singular}) => (
+            <li key={item.id} className="rounded-md border border-zinc-200 p-4">
+              <dl className="grid gap-3 sm:grid-cols-3">
+${cells}
+              </dl>
+            </li>
+          ))}
+        </ul>
+      )}
+    </main>
+  );
+}
+`;
+}
+
+/**
  * @param {ReturnType<typeof buildContext>} ctx
  */
 function renderIndex(ctx) {
   /** @type {string[]} */
-  const lines = [
-    `export { default as ${ctx.camelPlural}Reducer } from "./slices/${ctx.camelPlural}.slice";`,
-    `export { default as ${ctx.Plural}Page } from "./pages/${ctx.Plural}Page";`,
-  ];
+  const lines = [];
+  if (ctx.state === 'redux') {
+    lines.push(
+      `export { default as ${ctx.camelPlural}Reducer } from "./slices/${ctx.camelPlural}.slice";`,
+    );
+  }
+  if (ctx.state === 'zustand') {
+    lines.push(`export { use${ctx.Plural}Store } from "./store/use${ctx.Plural}Store";`);
+  }
+  lines.push(`export { default as ${ctx.Plural}Page } from "./pages/${ctx.Plural}Page";`);
+  lines.push(
+    `export { default as ${ctx.Plural}PublicPage } from "./pages/${ctx.Plural}PublicPage";`,
+  );
 
   if (ctx.ops.create) {
     lines.push(
@@ -1622,35 +1888,37 @@ function renderIndex(ctx) {
   lines.push(`export { ${ctx.camel}Service } from "./services/${ctx.camel}.service";`);
   lines.push(`export { ${ctx.camel}ApiRoutes, ${ctx.camel}AppRoutes } from "./services/${ctx.camel}.routes";`);
 
-  if (ctx.ops.search || ctx.ops.list) {
-    lines.push(
-      `export { get${ctx.Plural} } from "./slices/thunks/get${ctx.Plural}.thunk";`,
-    );
-  }
-  if (ctx.ops.getById) {
-    lines.push(
-      `export { get${ctx.Singular}ById } from "./slices/thunks/get${ctx.Singular}ById.thunk";`,
-    );
-  }
-  if (ctx.ops.create) {
-    lines.push(
-      `export { create${ctx.Singular} } from "./slices/thunks/create${ctx.Singular}.thunk";`,
-    );
-  }
-  if (ctx.ops.update) {
-    lines.push(
-      `export { update${ctx.Singular} } from "./slices/thunks/update${ctx.Singular}.thunk";`,
-    );
-  }
-  if (ctx.ops.delete) {
-    lines.push(
-      `export { delete${ctx.Singular} } from "./slices/thunks/delete${ctx.Singular}.thunk";`,
-    );
-  }
-  if (ctx.ops.restore) {
-    lines.push(
-      `export { restore${ctx.Singular} } from "./slices/thunks/restore${ctx.Singular}.thunk";`,
-    );
+  if (ctx.state === 'redux') {
+    if (ctx.ops.search || ctx.ops.list) {
+      lines.push(
+        `export { get${ctx.Plural} } from "./slices/thunks/get${ctx.Plural}.thunk";`,
+      );
+    }
+    if (ctx.ops.getById) {
+      lines.push(
+        `export { get${ctx.Singular}ById } from "./slices/thunks/get${ctx.Singular}ById.thunk";`,
+      );
+    }
+    if (ctx.ops.create) {
+      lines.push(
+        `export { create${ctx.Singular} } from "./slices/thunks/create${ctx.Singular}.thunk";`,
+      );
+    }
+    if (ctx.ops.update) {
+      lines.push(
+        `export { update${ctx.Singular} } from "./slices/thunks/update${ctx.Singular}.thunk";`,
+      );
+    }
+    if (ctx.ops.delete) {
+      lines.push(
+        `export { delete${ctx.Singular} } from "./slices/thunks/delete${ctx.Singular}.thunk";`,
+      );
+    }
+    if (ctx.ops.restore) {
+      lines.push(
+        `export { restore${ctx.Singular} } from "./slices/thunks/restore${ctx.Singular}.thunk";`,
+      );
+    }
   }
 
   lines.push(`export type { ${ctx.Singular} } from "./types/${ctx.camel}.types";`);
@@ -1658,3 +1926,4 @@ function renderIndex(ctx) {
   return `${lines.join('\n')}
 `;
 }
+

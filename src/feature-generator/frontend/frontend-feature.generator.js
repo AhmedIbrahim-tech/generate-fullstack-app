@@ -16,6 +16,8 @@ import {
 } from './angular/angular-registries.js';
 import { planSharedAngularControls } from './angular/shared-controls.generator.js';
 import { getFrontendFilePath } from '../../utils/project-paths.js';
+import { emitFrontendLanguage, emitSource, frontendSourceName } from './emit-language.js';
+import { isReduxState } from '../feature-profile.js';
 
 /**
  * @param {object} config
@@ -42,15 +44,28 @@ export async function planFrontendFeature(config) {
     if (strategy.framework === 'vite') {
       files.push(...planViteFeatureFiles(config));
       registryUpdates.push({
-        relativePath: getFrontendFilePath(config, 'src', 'app', 'router', 'generated-routes.tsx'),
-        update: (existing) => buildViteRouteRegistryUpdate(config, existing),
+        relativePath: getFrontendFilePath(
+          config,
+          'src',
+          'app',
+          'router',
+          frontendSourceName(config, 'generated-routes.tsx'),
+        ),
+        update: (existing) => emitSource(buildViteRouteRegistryUpdate(config, existing), config),
       });
     }
 
-    registryUpdates.push({
-      relativePath: getFrontendFilePath(config, 'src', 'store', 'generated-reducers.ts'),
-      update: (existing) => buildGeneratedReducers(config, existing),
-    });
+    if (isReduxState(config)) {
+      registryUpdates.push({
+        relativePath: getFrontendFilePath(
+          config,
+          'src',
+          'store',
+          frontendSourceName(config, 'generated-reducers.ts'),
+        ),
+        update: (existing) => emitSource(buildGeneratedReducers(config, existing), config),
+      });
+    }
 
     if (config.surface.dashboard) {
       registryUpdates.push({
@@ -58,9 +73,9 @@ export async function planFrontendFeature(config) {
           config,
           'src',
           'navigation',
-          'generated-dashboard-nav.ts',
+          frontendSourceName(config, 'generated-dashboard-nav.ts'),
         ),
-        update: (existing) => buildGeneratedDashboardNav(config, existing),
+        update: (existing) => emitSource(buildGeneratedDashboardNav(config, existing), config),
       });
     }
   }
@@ -88,7 +103,7 @@ export async function planFrontendFeature(config) {
     }
   }
 
-  return { files, registryUpdates };
+  return { files: emitFrontendLanguage(files, config), registryUpdates };
 }
 
 /**

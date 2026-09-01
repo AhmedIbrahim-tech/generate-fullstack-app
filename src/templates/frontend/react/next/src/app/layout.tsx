@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { Providers } from "./providers";
+import "@/styles/app-shell.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

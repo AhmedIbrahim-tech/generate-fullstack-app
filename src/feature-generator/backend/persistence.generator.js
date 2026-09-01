@@ -1,15 +1,22 @@
 import { groupFields, hasMediaField } from '../fields/field-mappers.js';
 import { getBackendFilePath } from '../../utils/project-paths.js';
+import { isDapperOnly, usesDapper } from './architecture.js';
+import { planDapperPersistenceFiles } from './dapper-persistence.generator.js';
 
 /**
  * @param {object} config
  * @returns {{ relativePath: string, contents: string }[]}
  */
 export function planPersistenceFiles(config) {
+  if (isDapperOnly(config.orm)) {
+    return planDapperPersistenceFiles(config);
+  }
+
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
 
-  return [
+  /** @type {{ relativePath: string, contents: string }[]} */
+  const files = [
     {
       relativePath: getBackendFilePath(
         config,
@@ -58,6 +65,12 @@ public partial class ApplicationDbContext
 `,
     },
   ];
+
+  if (usesDapper(config.orm)) {
+    files.push(...planDapperPersistenceFiles(config));
+  }
+
+  return files;
 }
 
 /**

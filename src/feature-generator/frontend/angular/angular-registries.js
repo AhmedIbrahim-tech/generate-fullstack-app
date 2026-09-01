@@ -43,6 +43,14 @@ export function buildAngularGeneratedRoutes(config, existingContents) {
       ? existingContents
       : BASE_GENERATED_ROUTES;
 
+  const publicImportPath = `../features/${kebabPluralName}/${kebabName}.public.routes`;
+  const publicEntry = `  {
+    path: "${kebabPluralName}",
+    loadChildren: () =>
+      import("${publicImportPath}").then((m) => m.${camelName}PublicRoutes),
+  },
+`;
+
   const importPath = `../features/${kebabPluralName}/${kebabName}.routes`;
   const entry = `  {
     path: "${kebabPluralName}",
@@ -55,8 +63,8 @@ export function buildAngularGeneratedRoutes(config, existingContents) {
     contents = insertBeforeArrayClose(
       contents,
       'export const generatedWebsiteRoutes: Routes = [',
-      entry,
-      importPath,
+      publicEntry,
+      publicImportPath,
     );
   }
 

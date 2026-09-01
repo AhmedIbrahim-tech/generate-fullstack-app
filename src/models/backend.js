@@ -38,6 +38,41 @@ export function defaultBackendSelection() {
   };
 }
 
+const IDENTITY_AUTHENTICATIONS = new Set(['identity-jwt', 'identity']);
+
+/**
+ * ASP.NET Identity stores (users, roles, claims) require EF Core.
+ * Dapper-only projects cannot host Identity without generating a broken app.
+ * @param {string} [authentication]
+ */
+export function identityRequiresEfCore(authentication) {
+  return IDENTITY_AUTHENTICATIONS.has(authentication);
+}
+
+/**
+ * Identity seeders, JWT placeholders, and Identity EF packages are only
+ * produced when authentication is enabled.
+ * @param {string} [authentication]
+ */
+export function shouldGenerateIdentityArtifacts(authentication) {
+  return Boolean(authentication) && authentication !== 'none';
+}
+
+/**
+ * Rejects backend option combinations that cannot generate a valid app.
+ * @param {{ orm?: string, authentication?: string }} [backend]
+ */
+export function assertBackendCompatibility(backend = {}) {
+  const orm = backend.orm ?? 'efcore';
+  const authentication = backend.authentication ?? 'none';
+
+  if (orm === 'dapper' && identityRequiresEfCore(authentication)) {
+    throw new Error(
+      'Dapper-only cannot be combined with ASP.NET Identity. Identity requires EF Core. Use --orm efcore or --orm efcore-dapper, or set --auth-mode none.',
+    );
+  }
+}
+
 /**
  * @param {BackendSelection | null | undefined} backend
  */

@@ -5,7 +5,7 @@ import { add, getCreateNextAppPackageManagerFlag, packageManagerUserAgent } from
 import { copyTemplate, pathExists, templatesRoot, writeFile, writeFileIfMissing } from '../../../../utils/filesystem.js';
 import { logger } from '../../../../utils/logger.js';
 import { STAGING_DIR_NAME, promoteStagingClient } from '../../client-setup.js';
-import { installReactCommonPackages, overlayReactCommon } from '../react-common.generator.js';
+import { installReactCommonPackages, overlayReactCommon, writeReactProviders, finalizeReactLanguage } from '../react-common.generator.js';
 
 /**
  * @param {object} options
@@ -73,6 +73,8 @@ export async function generateNextFrontend(options) {
     options.replacements,
   );
 
+  await writeReactProviders(clientDir, frontend);
+
   if (isTailwind) {
     await writeFileIfMissing(path.join(clientDir, 'src', 'app', 'globals.css'), '@import "tailwindcss";\n');
   } else {
@@ -83,31 +85,49 @@ export async function generateNextFrontend(options) {
     );
   }
 
-  const defaultPage = path.join(clientDir, 'src', 'app', 'page.tsx');
-  if (await pathExists(defaultPage)) {
-    await fs.unlink(defaultPage);
+  const defaultPageTs = path.join(clientDir, 'src', 'app', 'page.tsx');
+  const defaultPageJs = path.join(clientDir, 'src', 'app', 'page.jsx');
+  if (await pathExists(defaultPageTs)) {
+    await fs.unlink(defaultPageTs);
+  }
+  if (await pathExists(defaultPageJs)) {
+    await fs.unlink(defaultPageJs);
   }
 
   if (frontend.localization ?? options.localization) {
-    await writeNextIntlConfig(clientDir);
+    await writeNextIntlConfig(clientDir, frontend);
   } else {
     await fs.rm(path.join(clientDir, 'src', 'i18n'), { recursive: true, force: true });
     await writePlainLayout(clientDir, options.replacements);
     await writePlainHomePage(clientDir, options.replacements);
   }
+
+  await finalizeReactLanguage(clientDir, frontend);
 }
 
-async function writeNextIntlConfig(clientDir) {
+async function writeNextIntlConfig(clientDir, frontend = {}) {
+  const isJs = frontend.language === 'javascript';
   const configPathTs = path.join(clientDir, 'next.config.ts');
   const configPathMjs = path.join(clientDir, 'next.config.mjs');
   const configPathJs = path.join(clientDir, 'next.config.js');
+  const pluginPath = isJs ? './src/i18n/request.js' : './src/i18n/request.ts';
+  const dest = isJs ? configPathMjs : configPathTs;
 
   await writeFile(
-    configPathTs,
-    `import type { NextConfig } from "next";
+    dest,
+    isJs
+      ? `import createNextIntlPlugin from "next-intl/plugin";
+
+const withNextIntl = createNextIntlPlugin("${pluginPath}");
+
+const nextConfig = {};
+
+export default withNextIntl(nextConfig);
+`
+      : `import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
-const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
+const withNextIntl = createNextIntlPlugin("${pluginPath}");
 
 const nextConfig: NextConfig = {};
 
@@ -115,11 +135,20 @@ export default withNextIntl(nextConfig);
 `,
   );
 
-  if (await pathExists(configPathMjs)) {
-    await fs.unlink(configPathMjs);
-  }
-  if (await pathExists(configPathJs)) {
-    await fs.unlink(configPathJs);
+  if (!isJs) {
+    if (await pathExists(configPathMjs)) {
+      await fs.unlink(configPathMjs);
+    }
+    if (await pathExists(configPathJs)) {
+      await fs.unlink(configPathJs);
+    }
+  } else {
+    if (await pathExists(configPathTs)) {
+      await fs.unlink(configPathTs);
+    }
+    if (await pathExists(configPathJs)) {
+      await fs.unlink(configPathJs);
+    }
   }
 }
 
@@ -127,6 +156,7 @@ async function writePlainLayout(clientDir, replacements) {
   await writeFile(
     path.join(clientDir, 'src', 'app', 'layout.tsx'),
     `import type { Metadata } from "next";
+import "@/styles/app-shell.css";
 import "./globals.css";
 import { Providers } from "./providers";
 
@@ -155,17 +185,11 @@ export default function RootLayout({
 async function writePlainHomePage(clientDir, replacements) {
   await writeFile(
     path.join(clientDir, 'src', 'app', '(website)', 'page.tsx'),
-    `export default function HomePage() {
-  return (
-    <main className="mx-auto flex min-h-[calc(100vh-160px)] max-w-4xl flex-col items-center justify-center gap-6 px-6 py-16 text-center">
-      <h1 className="text-4xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-100 sm:text-5xl">
-        ${replacements.__DISPLAY_NAME__}
-      </h1>
-      <p className="max-w-xl text-lg text-zinc-600 dark:text-zinc-400">
-        Clean, scalable full-stack application built with production-ready architecture.
-      </p>
-    </main>
-  );
+    `import { HomeLanding } from "@/shared/components/marketing/HomeLanding";
+import { AppLink } from "@/app/navigation/app-link";
+
+export default function HomePage() {
+  return <HomeLanding productName="${replacements.__DISPLAY_NAME__}" Link={AppLink} />;
 }
 `,
   );

@@ -759,61 +759,41 @@ import {
   selectAuthError,
   selectAuthStatus,
 } from "../../core/auth/auth.selectors";
+import { AuthFrameComponent } from "../../shared/components/auth-frame.component";
 
 @Component({
   selector: "app-login-page",
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, AuthFrameComponent],
   template: \`
-    <main
-      class="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6 py-16"
-    >
-      <header>
-        <h1 class="text-3xl font-semibold text-zinc-900">Sign in</h1>
-        <p class="mt-1 text-sm text-zinc-600">
-          Welcome back. Enter your credentials to continue.
-        </p>
-      </header>
-
+    <app-auth-frame title="Sign in" description="Enter your credentials to continue.">
       @if (error(); as message) {
-        <p class="text-sm text-red-600" role="alert">{{ message }}</p>
+        <p class="ui-error-text" role="alert">{{ message }}</p>
       }
 
-      <form class="flex flex-col gap-4" [formGroup]="form" (ngSubmit)="submit()">
-        <label class="flex flex-col gap-1 text-sm text-zinc-800">
+      <form class="ui-form-stack" [formGroup]="form" (ngSubmit)="submit()">
+        <label class="ui-field">
           Email
-          <input
-            type="email"
-            autocomplete="email"
-            class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
-            formControlName="email"
-          />
+          <input type="email" autocomplete="email" class="ui-input" formControlName="email" />
         </label>
 
-        <label class="flex flex-col gap-1 text-sm text-zinc-800">
+        <label class="ui-field">
           Password
-          <input
-            type="password"
-            autocomplete="current-password"
-            class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
-            formControlName="password"
-          />
+          <input type="password" autocomplete="current-password" class="ui-input" formControlName="password" />
         </label>
 
-        <button
-          type="submit"
-          class="mt-2 rounded-md bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-60"
-          [disabled]="submitting()"
-        >
+        <button type="submit" class="ui-btn ui-btn-primary" [disabled]="submitting()">
           {{ submitting() ? "Signing in..." : "Sign in" }}
         </button>
 
-        <p class="text-sm text-zinc-600">
+        <p class="ui-form-foot">
           Need an account?
-          <a routerLink="/register" class="text-zinc-900 underline">Create one</a>
+          <a routerLink="/register">Create one</a>
+          <br />
+          <a routerLink="/forgot-password">Forgot password</a>
         </p>
       </form>
-    </main>
+    </app-auth-frame>
   \`,
 })
 export class LoginPageComponent {
@@ -859,6 +839,7 @@ import {
   selectAuthError,
   selectAuthStatus,
 } from "../../core/auth/auth.selectors";
+import { AuthFrameComponent } from "../../shared/components/auth-frame.component";
 
 function passwordsMatch(group: AbstractControl): ValidationErrors | null {
   const password = group.get("password")?.value;
@@ -869,86 +850,53 @@ function passwordsMatch(group: AbstractControl): ValidationErrors | null {
 @Component({
   selector: "app-register-page",
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, AuthFrameComponent],
   template: \`
-    <main
-      class="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6 py-16"
-    >
-      <header>
-        <h1 class="text-3xl font-semibold text-zinc-900">Create account</h1>
-        <p class="mt-1 text-sm text-zinc-600">
-          Set up your account to get started.
-        </p>
-      </header>
-
+    <app-auth-frame title="Create account" description="Set up workspace access for this application.">
       @if (error(); as message) {
-        <p class="text-sm text-red-600" role="alert">{{ message }}</p>
+        <p class="ui-error-text" role="alert">{{ message }}</p>
       }
 
-      <form class="flex flex-col gap-4" [formGroup]="form" (ngSubmit)="submit()">
-        <label class="flex flex-col gap-1 text-sm text-zinc-800">
+      <form class="ui-form-stack" [formGroup]="form" (ngSubmit)="submit()">
+        <label class="ui-field">
           Name
-          <input
-            type="text"
-            autocomplete="name"
-            class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
-            formControlName="displayName"
-          />
+          <input type="text" autocomplete="name" class="ui-input" formControlName="displayName" />
         </label>
 
-        <label class="flex flex-col gap-1 text-sm text-zinc-800">
+        <label class="ui-field">
           Email
-          <input
-            type="email"
-            autocomplete="email"
-            class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
-            formControlName="email"
-          />
+          <input type="email" autocomplete="email" class="ui-input" formControlName="email" />
         </label>
 
-        <label class="flex flex-col gap-1 text-sm text-zinc-800">
+        <label class="ui-field">
           Password
-          <input
-            type="password"
-            autocomplete="new-password"
-            class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
-            formControlName="password"
-          />
+          <input type="password" autocomplete="new-password" class="ui-input" formControlName="password" />
         </label>
 
-        <label class="flex flex-col gap-1 text-sm text-zinc-800">
+        <label class="ui-field">
           Confirm password
-          <input
-            type="password"
-            autocomplete="new-password"
-            class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900"
-            formControlName="confirmPassword"
-          />
+          <input type="password" autocomplete="new-password" class="ui-input" formControlName="confirmPassword" />
         </label>
 
         @if (
           form.hasError("passwordMismatch") &&
           form.get("confirmPassword")?.touched
         ) {
-          <p class="text-sm text-red-600" role="alert">
+          <p class="ui-error-text" role="alert">
             Passwords do not match.
           </p>
         }
 
-        <button
-          type="submit"
-          class="mt-2 rounded-md bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-60"
-          [disabled]="submitting()"
-        >
+        <button type="submit" class="ui-btn ui-btn-primary" [disabled]="submitting()">
           {{ submitting() ? "Creating account..." : "Create account" }}
         </button>
 
-        <p class="text-sm text-zinc-600">
+        <p class="ui-form-foot">
           Already have an account?
-          <a routerLink="/login" class="text-zinc-900 underline">Sign in</a>
+          <a routerLink="/login">Sign in</a>
         </p>
       </form>
-    </main>
+    </app-auth-frame>
   \`,
 })
 export class RegisterPageComponent {

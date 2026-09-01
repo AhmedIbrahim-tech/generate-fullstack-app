@@ -1,6 +1,6 @@
-import path from 'node:path';
 import { describeField } from './field-view.js';
 import { getFrontendFilePath } from '../../../utils/project-paths.js';
+import { frontendSourceName } from '../emit-language.js';
 
 /**
  * Plan the Next.js App Router files that wrap a React feature module.
@@ -16,6 +16,7 @@ export function planNextFeatureFiles(config) {
   } = config.feature;
   const ops = config.operations;
   const surface = config.surface ?? { dashboard: true, public: false };
+  const src = (name) => frontendSourceName(config, name);
 
   /** @type {{ relativePath: string, contents: string }[]} */
   const files = [];
@@ -25,14 +26,14 @@ export function planNextFeatureFiles(config) {
       getFrontendFilePath(config, 'src', 'app', '(dashboard)', 'dashboard', kebabPlural, ...segments);
 
     files.push({
-      relativePath: dashBase('page.tsx'),
+      relativePath: dashBase(src('page.tsx')),
       contents: `export { default } from "@/modules/${kebabPlural}/pages/${Plural}Page";
 `,
     });
 
     if (ops.create) {
       files.push({
-        relativePath: dashBase('create', 'page.tsx'),
+        relativePath: dashBase('create', src('page.tsx')),
         contents: `export { default } from "@/modules/${kebabPlural}/pages/Create${Singular}Page";
 `,
       });
@@ -40,7 +41,7 @@ export function planNextFeatureFiles(config) {
 
     if (ops.update) {
       files.push({
-        relativePath: dashBase('[id]', 'edit', 'page.tsx'),
+        relativePath: dashBase('[id]', 'edit', src('page.tsx')),
         contents: `export { default } from "@/modules/${kebabPlural}/pages/Edit${Singular}Page";
 `,
       });
@@ -54,18 +55,18 @@ export function planNextFeatureFiles(config) {
       getFrontendFilePath(config, 'src', 'modules', kebabPlural, ...segments);
 
     files.push({
-      relativePath: moduleBase('services', `${camel}.server.service.ts`),
+      relativePath: moduleBase('services', src(`${camel}.server.service.ts`)),
       contents: renderServerService(config),
     });
 
     files.push({
-      relativePath: publicBase('page.tsx'),
+      relativePath: publicBase(src('page.tsx')),
       contents: renderPublicListPage(config),
     });
 
     if (ops.getById) {
       files.push({
-        relativePath: publicBase('[id]', 'page.tsx'),
+        relativePath: publicBase('[id]', src('page.tsx')),
         contents: renderPublicDetailPage(config),
       });
     }

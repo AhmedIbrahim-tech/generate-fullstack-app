@@ -1,4 +1,5 @@
 import { getFrontendFilePath } from '../../../utils/project-paths.js';
+import { frontendSourceName } from '../emit-language.js';
 
 /**
  * Plan the shared, reusable React form controls used by generated feature
@@ -9,6 +10,7 @@ import { getFrontendFilePath } from '../../../utils/project-paths.js';
  * @returns {{ relativePath: string, contents: string, writeMode: 'ifMissing' }[]}
  */
 export function planSharedReactControls(config = {}) {
+  const src = (name) => frontendSourceName(config, name);
   const formsBase = (...segments) =>
     getFrontendFilePath(config, 'src', 'shared', 'components', 'forms', ...segments);
   const typesBase = (...segments) =>
@@ -16,37 +18,37 @@ export function planSharedReactControls(config = {}) {
 
   return [
     {
-      relativePath: typesBase('stored-file.types.ts'),
+      relativePath: typesBase(src('stored-file.types.ts')),
       contents: STORED_FILE_TYPES,
       writeMode: 'ifMissing',
     },
     {
-      relativePath: typesBase('lookup.types.ts'),
+      relativePath: typesBase(src('lookup.types.ts')),
       contents: LOOKUP_TYPES,
       writeMode: 'ifMissing',
     },
     {
-      relativePath: formsBase('EnumSelect.tsx'),
+      relativePath: formsBase(src('EnumSelect.tsx')),
       contents: ENUM_SELECT,
       writeMode: 'ifMissing',
     },
     {
-      relativePath: formsBase('LookupSelect.tsx'),
+      relativePath: formsBase(src('LookupSelect.tsx')),
       contents: LOOKUP_SELECT,
       writeMode: 'ifMissing',
     },
     {
-      relativePath: formsBase('MultiLookupSelect.tsx'),
+      relativePath: formsBase(src('MultiLookupSelect.tsx')),
       contents: MULTI_LOOKUP_SELECT,
       writeMode: 'ifMissing',
     },
     {
-      relativePath: formsBase('FileUploadField.tsx'),
+      relativePath: formsBase(src('FileUploadField.tsx')),
       contents: FILE_UPLOAD_FIELD,
       writeMode: 'ifMissing',
     },
     {
-      relativePath: formsBase('ImageUploadField.tsx'),
+      relativePath: formsBase(src('ImageUploadField.tsx')),
       contents: IMAGE_UPLOAD_FIELD,
       writeMode: 'ifMissing',
     },
@@ -323,9 +325,7 @@ type FileUploadFieldProps = SingleFileProps | MultiFileProps;
 async function uploadFile(file: File): Promise<StoredFileDto> {
   const formData = new FormData();
   formData.append("file", file);
-  const response = await apiClient.post<StoredFileDto>("/api/v1/Files", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  const response = await apiClient.post<StoredFileDto>("/api/v1/Files", formData);
   return response.data;
 }
 
@@ -462,9 +462,7 @@ type ImageUploadFieldProps = SingleImageProps | MultiImageProps;
 async function uploadFile(file: File): Promise<StoredFileDto> {
   const formData = new FormData();
   formData.append("file", file);
-  const response = await apiClient.post<StoredFileDto>("/api/v1/Files", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  const response = await apiClient.post<StoredFileDto>("/api/v1/Files", formData);
   return response.data;
 }
 

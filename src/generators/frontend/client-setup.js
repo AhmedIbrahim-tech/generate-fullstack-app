@@ -2,7 +2,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { ensureDir, pathExists } from '../../utils/filesystem.js';
 
-export const STAGING_DIR_NAME = '._temp_frontend_scaffold';
+export const STAGING_DIR_NAME = 'temp-frontend-scaffold';
 
 /**
  * @param {string} targetDirectory

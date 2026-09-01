@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { runCommand } from '../src/utils/command.js';
 import { run } from '../src/utils/package-manager.js';
 import { pathExists } from '../src/utils/filesystem.js';
+import { loadProjectLayout, backendFile, frontendFile } from './smoke-paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const generatorRoot = path.resolve(__dirname, '..');
@@ -68,14 +69,13 @@ function featureCmd(projectDir, args) {
   );
 }
 
-async function ensureBackendBuild(projectDir) {
-  runCommand('dotnet', ['restore'], { cwd: projectDir, step: 'dotnet restore' });
-  runCommand('dotnet', ['build'], { cwd: projectDir, step: 'dotnet build' });
+async function ensureBackendBuild(layout) {
+  runCommand('dotnet', ['restore'], { cwd: layout.backendDir, step: 'dotnet restore' });
+  runCommand('dotnet', ['build'], { cwd: layout.backendDir, step: 'dotnet build' });
 }
 
-async function buildFrontend(projectDir, framework) {
-  const clientDir = path.join(projectDir, 'Client');
-  run('npm', 'build', { cwd: clientDir, step: `${framework} build` });
+async function buildFrontend(layout, framework) {
+  run('npm', 'build', { cwd: layout.frontendDir, step: `${framework} build` });
 }
 
 async function securityAudit(projectDir) {
@@ -127,22 +127,22 @@ async function securityAudit(projectDir) {
   pass(`Security audit clean (${path.basename(projectDir)})`);
 }
 
-async function assertAuthArchitecture(projectDir, library) {
+async function assertAuthArchitecture(layout, library) {
   await assertExists(
-    path.join(projectDir, 'Infrastructure', 'Authentication', 'AuthDependencyInjection.cs'),
+    backendFile(layout, 'Infrastructure', 'Authentication', 'AuthDependencyInjection.cs'),
     'Auth DI',
   );
   await assertExists(
-    path.join(projectDir, 'Infrastructure', 'Persistence', 'Entities', 'RefreshToken.cs'),
+    backendFile(layout, 'Infrastructure', 'Persistence', 'Entities', 'RefreshToken.cs'),
     'RefreshToken entity',
   );
   await assertExists(
-    path.join(projectDir, 'API', 'Controllers', 'AuthController.cs'),
+    backendFile(layout, 'API', 'Controllers', 'AuthController.cs'),
     'AuthController',
   );
 
   const refreshEntity = await fs.readFile(
-    path.join(projectDir, 'Infrastructure', 'Persistence', 'Entities', 'RefreshToken.cs'),
+    backendFile(layout, 'Infrastructure', 'Persistence', 'Entities', 'RefreshToken.cs'),
     'utf8',
   );
   if (!refreshEntity.includes('TokenHash')) {
@@ -155,18 +155,18 @@ async function assertAuthArchitecture(projectDir, library) {
 
   if (library === 'react') {
     await assertExists(
-      path.join(projectDir, 'Client', 'src', 'modules', 'auth', 'slices', 'thunks', 'login.thunk.ts'),
+      frontendFile(layout, 'src', 'modules', 'auth', 'slices', 'thunks', 'login.thunk.ts'),
       'React auth thunk under slices/thunks',
     );
     await assertMissing(
-      path.join(projectDir, 'Client', 'src', 'modules', 'auth', 'thunks'),
+      frontendFile(layout, 'src', 'modules', 'auth', 'thunks'),
       'No modules/auth/thunks directory',
     );
   }
 
   if (library === 'angular') {
     const packageJson = JSON.parse(
-      await fs.readFile(path.join(projectDir, 'Client', 'package.json'), 'utf8'),
+      await fs.readFile(frontendFile(layout, 'package.json'), 'utf8'),
     );
     const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
     for (const banned of ['react', 'react-dom', 'next', 'redux', '@reduxjs/toolkit']) {
@@ -207,8 +207,9 @@ async function verifyManifestModules(projectDir) {
   pass('Manifest V4 modules enabled');
 }
 
-async function runAuthRuntimeSmoke(projectDir) {
-  const apiDir = path.join(projectDir, 'API');
+async function runAuthRuntimeSmoke(layout) {
+  const apiDir = backendFile(layout, 'API');
+  const infraDir = backendFile(layout, 'Infrastructure');
   const env = {
     ...process.env,
     Jwt__SigningKey: 'smoke-test-signing-key-change-me-32chars',
@@ -229,13 +230,13 @@ async function runAuthRuntimeSmoke(projectDir) {
         'add',
         'SmokeAuth',
         '--project',
-        path.join(projectDir, 'Infrastructure'),
+        infraDir,
         '--startup-project',
         apiDir,
         '--output-dir',
         'Persistence/Migrations',
       ],
-      { cwd: projectDir, step: 'smoke ef migration' },
+      { cwd: layout.backendDir, step: 'smoke ef migration' },
     );
     runCommand(
       'dotnet',
@@ -244,11 +245,11 @@ async function runAuthRuntimeSmoke(projectDir) {
         'database',
         'update',
         '--project',
-        path.join(projectDir, 'Infrastructure'),
+        infraDir,
         '--startup-project',
         apiDir,
       ],
-      { cwd: projectDir, step: 'smoke ef database update' },
+      { cwd: layout.backendDir, step: 'smoke ef database update' },
     );
   } catch (error) {
     process.stdout.write(
@@ -258,7 +259,7 @@ async function runAuthRuntimeSmoke(projectDir) {
   }
 
   const child = spawn('dotnet', ['run', '--no-build', '--project', apiDir], {
-    cwd: projectDir,
+    cwd: layout.backendDir,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -408,12 +409,13 @@ async function smokeOne({ name, frontendArgs, library, framework, extraFlags = [
 
   createProject(name, frontendArgs, outputDir, extraFlags);
   const projectDir = path.join(outputDir, name);
+  const layout = await loadProjectLayout(projectDir);
 
   moduleCmd(projectDir, ['--status']);
   moduleCmd(projectDir, ['auth', '--dry-run']);
 
   await verifyManifestModules(projectDir);
-  await assertAuthArchitecture(projectDir, library);
+  await assertAuthArchitecture(layout, library);
 
   // Duplicate protection
   moduleCmd(projectDir, ['auth', '--yes']);
@@ -453,19 +455,19 @@ async function smokeOne({ name, frontendArgs, library, framework, extraFlags = [
   }
 
   await securityAudit(projectDir);
-  await ensureBackendBuild(projectDir);
+  await ensureBackendBuild(layout);
   pass(`${name} backend build`);
 
-  await buildFrontend(projectDir, framework);
+  await buildFrontend(layout, framework);
   pass(`${name} frontend build`);
 
-  return projectDir;
+  return { projectDir, layout };
 }
 
 async function main() {
   process.stdout.write('CREATE FULLSTACK APP — V4 SMOKE\n');
 
-  const nextDir = await smokeOne({
+  const nextResult = await smokeOne({
     name: 'V4NextSmoke',
     frontendArgs: ['--frontend', 'react', '--react-framework', 'next'],
     library: 'react',
@@ -473,7 +475,7 @@ async function main() {
     extraFlags: ['--domain-localization', '--rich-text'],
   });
 
-  const authRuntime = await runAuthRuntimeSmoke(nextDir);
+  const authRuntime = await runAuthRuntimeSmoke(nextResult.layout);
 
   await smokeOne({
     name: 'V4ViteSmoke',

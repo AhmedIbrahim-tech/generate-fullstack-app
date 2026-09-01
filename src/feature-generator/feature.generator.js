@@ -1,11 +1,10 @@
 import { FEATURE_GENERATOR_VERSION } from './feature.arguments.js';
-import { isModuleEnabled } from '../module-generator/module.registry.js';
 import { registerFeaturePermissions } from '../module-generator/permissions/permissions.generator.js';
 import { pathExists, ensureDir, writeFile } from '../utils/filesystem.js';
 import { logger } from '../utils/logger.js';
 import { runCommand } from '../utils/command.js';
 import { buildFeatureConfig } from './feature.config.js';
-import { planBackendFeature, backendConflictPaths } from './backend/backend-feature.generator.js';
+import { planBackendFeature, backendConflictPaths, planBackendRegistryUpdates } from './backend/backend-feature.generator.js';
 import {
   planFrontendFeature,
   frontendConflictPaths,
@@ -18,6 +17,7 @@ import {
   resolveFrontendStrategy,
 } from './utils/manifest.js';
 import { getBackendDirectory, getFrontendDirectory } from '../utils/project-paths.js';
+import { isDapperOnly } from './backend/architecture.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -33,10 +33,13 @@ export async function generateFeature(resolvedOptions) {
   }
 
   const manifest = await readManifest(projectRoot);
-  const projectName = path.basename(projectRoot);
+  const projectName = manifest.projectName;
+  if (!projectName) {
+    throw new Error('Project manifest is missing projectName. Re-run create-fullstack-app or set projectName in .fullstack-app.json.');
+  }
   const frontendStrategy = resolveFrontendStrategy(manifest);
-  const hasBackend = Boolean(typeof manifest.backend === 'object' ? manifest.backend?.enabled : manifest.backend);
-  const hasFrontend = Boolean(frontendStrategy.library);
+  const hasBackend = manifest.backend?.enabled === true;
+  const hasFrontend = manifest.frontend?.enabled === true && Boolean(frontendStrategy.library);
   const backendDir = getBackendDirectory(projectRoot, manifest) ?? projectRoot;
   const hasFileStorage = await pathExists(
     path.join(backendDir, 'Domain', 'Entities', 'StoredFile.cs'),
@@ -64,28 +67,33 @@ export async function generateFeature(resolvedOptions) {
 
   const backendFiles = planBackendFeature(config, { hasFileStorage });
   const { files: frontendFiles, registryUpdates } = await planFrontendFeature(config);
+  registryUpdates.push(...planBackendRegistryUpdates(config, { hasFileStorage }));
 
-  const plannedRegistries = [];
-  for (const entry of registryUpdates) {
-    plannedRegistries.push(await applyRegistryUpdate(projectRoot, entry));
+  if (config.dryRun) {
+    const plannedRegistries = [];
+    for (const entry of registryUpdates) {
+      plannedRegistries.push(await applyRegistryUpdate(projectRoot, entry));
+    }
+    const allFiles = [...backendFiles, ...frontendFiles, ...plannedRegistries];
+    const conflicts = await findConflicts(projectRoot, config, allFiles);
+    if (conflicts.length > 0 && !config.force) {
+      throw new Error(
+        `Feature already exists or conflicts with:\n${conflicts.map((c) => `  - ${c}`).join('\n')}\nGeneration stopped. Use --force only if you intentionally want to overwrite generator-owned files.`,
+      );
+    }
+    printDryRun(allFiles, config);
+    return { dryRun: true, files: allFiles, config };
   }
 
-  const allFiles = [...backendFiles, ...frontendFiles, ...plannedRegistries];
-
-  const conflicts = await findConflicts(projectRoot, config, allFiles);
+  const conflicts = await findConflicts(projectRoot, config, [...backendFiles, ...frontendFiles]);
   if (conflicts.length > 0 && !config.force) {
     throw new Error(
       `Feature already exists or conflicts with:\n${conflicts.map((c) => `  - ${c}`).join('\n')}\nGeneration stopped. Use --force only if you intentionally want to overwrite generator-owned files.`,
     );
   }
 
-  if (config.dryRun) {
-    printDryRun(allFiles, config);
-    return { dryRun: true, files: allFiles, config };
-  }
-
   const written = new Set();
-  for (const file of allFiles) {
+  for (const file of [...backendFiles, ...frontendFiles]) {
     const key = file.relativePath.replaceAll('\\', '/');
     if (written.has(key) && file.writeMode !== 'replace') {
       continue;
@@ -94,6 +102,15 @@ export async function generateFeature(resolvedOptions) {
     written.add(key);
   }
 
+  const plannedRegistries = [];
+  for (const entry of registryUpdates) {
+    const updated = await applyRegistryUpdate(projectRoot, entry);
+    plannedRegistries.push(updated);
+    await writePlannedFile(projectRoot, updated, config.force);
+  }
+
+  const allFiles = [...backendFiles, ...frontendFiles, ...plannedRegistries];
+
   await updateFeatureMetadata(projectRoot, manifest, config);
   await maybeWriteLocalization(projectRoot, config);
   await maybeRegisterFeaturePermissions(projectRoot, manifest, config);
@@ -101,7 +118,7 @@ export async function generateFeature(resolvedOptions) {
   logger.success(`Feature ${config.feature.singularName} generated.`);
   logger.info('Feature generated. Run migration when ready.');
 
-  if (config.migration && config.generation.backend) {
+  if (config.migration && config.generation.backend && !isDapperOnly(config.orm)) {
     await generateMigration(projectRoot, config);
   }
 
@@ -114,10 +131,7 @@ export async function generateFeature(resolvedOptions) {
  * @param {object} config
  */
 async function maybeRegisterFeaturePermissions(projectRoot, manifest, config) {
-  if (!config.generatePermissions) {
-    return;
-  }
-  if (!isModuleEnabled(manifest, 'permissions')) {
+  if (!config.permissions) {
     return;
   }
 
@@ -418,6 +432,10 @@ async function mergeJsonMessages(filePath, keyBase, value) {
  * @param {object} config
  */
 async function generateMigration(projectRoot, config) {
+  if (isDapperOnly(config.orm)) {
+    logger.info('Skipping EF migration because this project uses Dapper-only data access.');
+    return;
+  }
   const backendDir = getBackendDirectory(projectRoot, config) ?? projectRoot;
   const name = `Add${config.feature.pluralName}Feature`;
   logger.step(`Generating EF migration ${name}...`);

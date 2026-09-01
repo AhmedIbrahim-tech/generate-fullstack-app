@@ -1,11 +1,16 @@
-export function DashboardPage() {
+import type { ReactElement } from "react";
+import { Link } from "react-router-dom";
+import { DashboardHome } from "@/shared/components/marketing/DashboardHome";
+import type { AppLinkProps } from "@/shared/navigation/app-link";
+
+function AppLink({ href, className, children, onClick }: AppLinkProps): ReactElement {
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 px-6 py-16">
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
-      <p className="text-zinc-600">
-        This layout is a dashboard-ready shell. Replace it with product modules
-        when you add features.
-      </p>
-    </main>
+    <Link to={href} className={className} onClick={onClick}>
+      {children}
+    </Link>
   );
+}
+
+export function DashboardPage() {
+  return <DashboardHome productName="__DISPLAY_NAME__" Link={AppLink} />;
 }

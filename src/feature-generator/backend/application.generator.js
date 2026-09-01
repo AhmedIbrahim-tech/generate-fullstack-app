@@ -6,6 +6,25 @@ import {
 import { pluralizePascal, toCamelCase } from '../utils/feature-naming.js';
 import { planLookupFiles, canBeLookupTarget } from './lookup.generator.js';
 import { getBackendFilePath } from '../../utils/project-paths.js';
+import { isDapperOnly, usesDapper } from './architecture.js';
+import { isAutoMapper } from '../feature-profile.js';
+import {
+  mappingCtorAssign,
+  mappingCtorParam,
+  mappingFields,
+  mappingUsing,
+  renderAutoMapperProfile,
+  toDtoCall,
+  toDtoListCall,
+} from './mapping.js';
+import {
+  renderDapperCreateHandler,
+  renderDapperDeleteHandler,
+  renderDapperGetByIdHandler,
+  renderDapperRestoreHandler,
+  renderDapperSearchHandler,
+  renderDapperUpdateHandler,
+} from './dapper-application.generator.js';
 
 /**
  * @param {object} config
@@ -24,8 +43,8 @@ export function planApplicationFiles(config) {
       contents: renderDto(config),
     },
     {
-      relativePath: base('Common', `${singularName}Mappings.cs`),
-      contents: renderMappings(config),
+      relativePath: base('Common', isAutoMapper(config) ? `${singularName}MappingProfile.cs` : `${singularName}Mappings.cs`),
+      contents: isAutoMapper(config) ? renderAutoMapperProfile(config) : renderMappings(config),
     },
   ];
 
@@ -344,7 +363,7 @@ ${assignments.join('\n')}
 /**
  * @param {object} config
  */
-function renderSearchQuery(config) {
+export function renderSearchQuery(config) {
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
   const groups = groupFields(config.fields);
@@ -383,7 +402,10 @@ public sealed class Search${pluralName}Query : SearchRequest, IRequest<Result<Pa
 /**
  * @param {object} config
  */
-function renderSearchHandler(config) {
+export function renderSearchHandler(config) {
+  if (usesDapper(config.orm)) {
+    return renderDapperSearchHandler(config);
+  }
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
   const groups = groupFields(config.fields);
@@ -451,7 +473,7 @@ ${predicates});
   const filterSection =
     filterBlocks.length > 0 ? `\n${filterBlocks.join('\n\n')}\n` : '';
 
-  return `using MediatR;
+  return `${mappingUsing(config)}using MediatR;
 using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Models;
@@ -464,11 +486,11 @@ namespace ${ns}.Application.Features.${pluralName}.Search;
 public sealed class Search${pluralName}QueryHandler
     : IRequestHandler<Search${pluralName}Query, Result<PaginationResult<${singularName}Dto>>>
 {
-    private readonly IApplicationDbContext _dbContext;
+    private readonly IApplicationDbContext _dbContext;${mappingFields(config)}
 
-    public Search${pluralName}QueryHandler(IApplicationDbContext dbContext)
+    public Search${pluralName}QueryHandler(IApplicationDbContext dbContext${mappingCtorParam(config)})
     {
-        _dbContext = dbContext;
+        _dbContext = dbContext;${mappingCtorAssign(config)}
     }
 
     public async Task<Result<PaginationResult<${singularName}Dto>>> Handle(
@@ -503,9 +525,7 @@ ${sortCases}
             .Take(request.PageSize)
             .ToListAsync(cancellationToken);
 
-        var data = pageItems
-            .Select(${singularName}Mappings.ToDto)
-            .ToList();
+        var data = ${toDtoListCall(config, 'pageItems')};
 
         var result = PaginationResult<${singularName}Dto>.Create(
             data,
@@ -522,7 +542,7 @@ ${sortCases}
 /**
  * @param {object} config
  */
-function renderSearchValidator(config) {
+export function renderSearchValidator(config) {
   const { pluralName } = config.feature;
   const ns = config.projectName;
 
@@ -552,7 +572,7 @@ public sealed class Search${pluralName}QueryValidator : AbstractValidator<Search
 /**
  * @param {object} config
  */
-function renderGetByIdQuery(config) {
+export function renderGetByIdQuery(config) {
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
 
@@ -569,7 +589,10 @@ public sealed record Get${singularName}ByIdQuery(Guid Id) : IRequest<Result<${si
 /**
  * @param {object} config
  */
-function renderGetByIdHandler(config) {
+export function renderGetByIdHandler(config) {
+  if (usesDapper(config.orm)) {
+    return renderDapperGetByIdHandler(config);
+  }
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
   const groups = groupFields(config.fields);
@@ -577,7 +600,7 @@ function renderGetByIdHandler(config) {
   const includes = buildIncludes(groups);
   const includeBlock = includes.length > 0 ? `\n${includes.join('\n')}` : '';
 
-  return `using MediatR;
+  return `${mappingUsing(config)}using MediatR;
 using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
@@ -589,11 +612,11 @@ namespace ${ns}.Application.Features.${pluralName}.GetById;
 public sealed class Get${singularName}ByIdQueryHandler
     : IRequestHandler<Get${singularName}ByIdQuery, Result<${singularName}Dto>>
 {
-    private readonly IApplicationDbContext _dbContext;
+    private readonly IApplicationDbContext _dbContext;${mappingFields(config)}
 
-    public Get${singularName}ByIdQueryHandler(IApplicationDbContext dbContext)
+    public Get${singularName}ByIdQueryHandler(IApplicationDbContext dbContext${mappingCtorParam(config)})
     {
-        _dbContext = dbContext;
+        _dbContext = dbContext;${mappingCtorAssign(config)}
     }
 
     public async Task<Result<${singularName}Dto>> Handle(
@@ -612,7 +635,7 @@ public sealed class Get${singularName}ByIdQueryHandler
                     $"${singularName} '{request.Id}' was not found."));
         }
 
-        return Result.Success(${singularName}Mappings.ToDto(entity));
+        return Result.Success(${toDtoCall(config, 'entity')});
     }
 }
 `;
@@ -773,7 +796,7 @@ function collectionLoadBlocks(groups, dtoType) {
 /**
  * @param {object} config
  */
-function renderCreateCommand(config) {
+export function renderCreateCommand(config) {
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
   const groups = groupFields(config.fields);
@@ -798,7 +821,10 @@ ${props}
 /**
  * @param {object} config
  */
-function renderCreateHandler(config) {
+export function renderCreateHandler(config) {
+  if (isDapperOnly(config.orm)) {
+    return renderDapperCreateHandler(config);
+  }
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
   const groups = groupFields(config.fields);
@@ -837,7 +863,7 @@ function renderCreateHandler(config) {
       ? `\n\n${collectionAssignments.join('\n')}`
       : '';
 
-  return `using MediatR;
+  return `${mappingUsing(config)}using MediatR;
 using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
@@ -849,11 +875,11 @@ namespace ${ns}.Application.Features.${pluralName}.Create;
 public sealed class Create${singularName}CommandHandler
     : IRequestHandler<Create${singularName}Command, Result<${singularName}Dto>>
 {
-    private readonly IApplicationDbContext _dbContext;
+    private readonly IApplicationDbContext _dbContext;${mappingFields(config)}
 
-    public Create${singularName}CommandHandler(IApplicationDbContext dbContext)
+    public Create${singularName}CommandHandler(IApplicationDbContext dbContext${mappingCtorParam(config)})
     {
-        _dbContext = dbContext;
+        _dbContext = dbContext;${mappingCtorAssign(config)}
     }
 
     public async Task<Result<${singularName}Dto>> Handle(
@@ -868,7 +894,7 @@ ${initializerLines.join('\n')}
         _dbContext.${pluralName}.Add(entity);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return Result.Success(${singularName}Mappings.ToDto(entity));
+        return Result.Success(${toDtoCall(config, 'entity')});
     }
 }
 `;
@@ -881,7 +907,7 @@ ${initializerLines.join('\n')}
 /**
  * @param {object} config
  */
-function renderUpdateCommand(config) {
+export function renderUpdateCommand(config) {
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
   const groups = groupFields(config.fields);
@@ -910,7 +936,10 @@ ${props}
 /**
  * @param {object} config
  */
-function renderUpdateHandler(config) {
+export function renderUpdateHandler(config) {
+  if (isDapperOnly(config.orm)) {
+    return renderDapperUpdateHandler(config);
+  }
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
   const groups = groupFields(config.fields);
@@ -956,7 +985,7 @@ function renderUpdateHandler(config) {
     syncBlocks.join('\n\n'),
   ]);
 
-  return `using MediatR;
+  return `${mappingUsing(config)}using MediatR;
 using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
@@ -967,11 +996,11 @@ namespace ${ns}.Application.Features.${pluralName}.Update;
 public sealed class Update${singularName}CommandHandler
     : IRequestHandler<Update${singularName}Command, Result<${singularName}Dto>>
 {
-    private readonly IApplicationDbContext _dbContext;
+    private readonly IApplicationDbContext _dbContext;${mappingFields(config)}
 
-    public Update${singularName}CommandHandler(IApplicationDbContext dbContext)
+    public Update${singularName}CommandHandler(IApplicationDbContext dbContext${mappingCtorParam(config)})
     {
-        _dbContext = dbContext;
+        _dbContext = dbContext;${mappingCtorAssign(config)}
     }
 
     public async Task<Result<${singularName}Dto>> Handle(
@@ -1006,7 +1035,7 @@ ${assignmentSection}
                     $"${singularName} '{request.Id}' was modified by another user."));
         }
 
-        return Result.Success(${singularName}Mappings.ToDto(entity));
+        return Result.Success(${toDtoCall(config, 'entity')});
     }
 }
 `;
@@ -1132,7 +1161,7 @@ function renderFieldValidators(config) {
 /**
  * @param {object} config
  */
-function renderCreateValidator(config) {
+export function renderCreateValidator(config) {
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
   const rules = renderFieldValidators(config);
@@ -1153,7 +1182,7 @@ public sealed class Create${singularName}CommandValidator : AbstractValidator<Cr
 /**
  * @param {object} config
  */
-function renderUpdateValidator(config) {
+export function renderUpdateValidator(config) {
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
   const rules = renderFieldValidators(config);
@@ -1184,7 +1213,7 @@ public sealed class Update${singularName}CommandValidator : AbstractValidator<Up
 /**
  * @param {object} config
  */
-function renderDeleteCommand(config) {
+export function renderDeleteCommand(config) {
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
 
@@ -1200,7 +1229,10 @@ public sealed record Delete${singularName}Command(Guid Id) : IRequest<Result>;
 /**
  * @param {object} config
  */
-function renderDeleteHandler(config) {
+export function renderDeleteHandler(config) {
+  if (isDapperOnly(config.orm)) {
+    return renderDapperDeleteHandler(config);
+  }
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
 
@@ -1250,7 +1282,7 @@ public sealed class Delete${singularName}CommandHandler
 /**
  * @param {object} config
  */
-function renderRestoreCommand(config) {
+export function renderRestoreCommand(config) {
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
 
@@ -1267,11 +1299,14 @@ public sealed record Restore${singularName}Command(Guid Id) : IRequest<Result<${
 /**
  * @param {object} config
  */
-function renderRestoreHandler(config) {
+export function renderRestoreHandler(config) {
+  if (isDapperOnly(config.orm)) {
+    return renderDapperRestoreHandler(config);
+  }
   const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
 
-  return `using MediatR;
+  return `${mappingUsing(config)}using MediatR;
 using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
@@ -1282,11 +1317,11 @@ namespace ${ns}.Application.Features.${pluralName}.Restore;
 public sealed class Restore${singularName}CommandHandler
     : IRequestHandler<Restore${singularName}Command, Result<${singularName}Dto>>
 {
-    private readonly IApplicationDbContext _dbContext;
+    private readonly IApplicationDbContext _dbContext;${mappingFields(config)}
 
-    public Restore${singularName}CommandHandler(IApplicationDbContext dbContext)
+    public Restore${singularName}CommandHandler(IApplicationDbContext dbContext${mappingCtorParam(config)})
     {
-        _dbContext = dbContext;
+        _dbContext = dbContext;${mappingCtorAssign(config)}
     }
 
     public async Task<Result<${singularName}Dto>> Handle(
@@ -1312,7 +1347,7 @@ public sealed class Restore${singularName}CommandHandler
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return Result.Success(${singularName}Mappings.ToDto(entity));
+        return Result.Success(${toDtoCall(config, 'entity')});
     }
 }
 `;

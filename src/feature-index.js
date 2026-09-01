@@ -44,8 +44,8 @@ async function main() {
     const strategy = resolveFrontendStrategy(manifest);
     const modules = manifest.modules ?? {};
     const project = {
-      hasBackend: Boolean(manifest.backend),
-      hasFrontend: Boolean(strategy.library),
+      hasBackend: manifest.backend?.enabled === true,
+      hasFrontend: manifest.frontend?.enabled === true && Boolean(strategy.library),
       modules: {
         permissions: Boolean(modules.permissions?.enabled),
         localization: Boolean(modules.localization?.enabled),
