@@ -37,7 +37,7 @@ async function main() {
 
     const projectRoot = await findProjectRoot(process.cwd());
     if (!projectRoot) {
-      throw new Error('This directory is not a create-fullstack-app project.');
+      throw new Error('This directory is not a generate-fullstack-app project.');
     }
 
     const manifest = await readManifest(projectRoot);

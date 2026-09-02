@@ -1,7 +1,7 @@
-# create-fullstack-app
+# generate-fullstack-app
 
 <p align="center">
-  <img src="hero.png" alt="create-fullstack-app hero: generate production-ready full stack, backend-only, or frontend-only apps" width="100%" />
+  <img src="hero.png" alt="generate-fullstack-app hero: generate production-ready full stack, backend-only, or frontend-only apps" width="100%" />
 </p>
 
 A flexible, production-grade project, feature, and application module generator for **ASP.NET Core Clean Architecture** backends and modern frontends (**React with Next.js or Vite**, or **Angular**).
@@ -32,7 +32,7 @@ Current version: **4.0.0**
 
 | Command | Purpose |
 | :--- | :--- |
-| `create-fullstack-app [ProjectName]` | Interactive CLI wizard to scaffold Full Stack, Backend Only, or Frontend Only apps |
+| `generate-fullstack-app [ProjectName]` | Interactive CLI wizard to scaffold Full Stack, Backend Only, or Frontend Only apps |
 | `create-fullstack-feature [FeatureName]` | Generate end-to-end CRUD features (Domain, Application, API, Frontend) |
 | `create-fullstack-module [ModuleName]` | Opt into production infrastructure modules (Auth, Users, Permissions, etc.) |
 
@@ -43,15 +43,15 @@ Current version: **4.0.0**
 ### Run with `npx` (No installation needed)
 
 ```bash
-npx github:AhmedIbrahim-tech/create-fullstack-app MyApp
+npx generate-fullstack-app MyApp
 ```
 
 ### Install globally
 
 ```bash
-npm install -g github:AhmedIbrahim-tech/create-fullstack-app
+npm install -g generate-fullstack-app
 
-create-fullstack-app MyApp
+generate-fullstack-app MyApp
 ```
 
 ---
@@ -64,7 +64,7 @@ Configure the stack visually, then generate with the CLI. The interactive builde
   <img src="Builder.png" alt="Interactive stack builder: project mode, architecture preview, and .fullstack-app.json output" width="100%" />
 </p>
 
-When running `create-fullstack-app`, the CLI asks:
+When running `generate-fullstack-app`, the CLI asks:
 
 > **What do you want to create?**
 > 1. Full Stack (Backend + Frontend)
@@ -159,7 +159,7 @@ Scaffold projects non-interactively using CLI flags:
 
 ### Full Stack Example
 ```bash
-create-fullstack-app MyApp --yes \
+generate-fullstack-app MyApp --yes \
   --mode fullstack \
   --database postgresql \
   --orm efcore \
@@ -171,7 +171,7 @@ create-fullstack-app MyApp --yes \
 
 ### Backend Only Example
 ```bash
-create-fullstack-app MyApi --backend-only --yes \
+generate-fullstack-app MyApi --backend-only --yes \
   --database postgresql \
   --architecture cqrs-mediatr \
   --background-jobs hangfire
@@ -179,7 +179,7 @@ create-fullstack-app MyApi --backend-only --yes \
 
 ### Frontend Only Example
 ```bash
-create-fullstack-app MyUi --frontend-only --yes \
+generate-fullstack-app MyUi --frontend-only --yes \
   --frontend react \
   --react-framework vite \
   --styling tailwind \
@@ -189,8 +189,8 @@ create-fullstack-app MyUi --frontend-only --yes \
 ### User Preferences
 Save and reuse your preferred choices across projects:
 ```bash
-create-fullstack-app MyApp --save-defaults
-create-fullstack-app NextApp --use-saved-preferences --yes
+generate-fullstack-app MyApp --save-defaults
+generate-fullstack-app NextApp --use-saved-preferences --yes
 ```
 
 ---

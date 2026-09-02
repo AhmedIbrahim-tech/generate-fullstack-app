@@ -63,7 +63,7 @@ export function resolveReactOverlayProfile(frontend = {}) {
       path.join('src', 'store', 'hooks.ts'),
       path.join('src', 'store', 'provider.tsx'),
       path.join('src', 'store', 'generated-reducers.ts'),
-      path.join('src', 'modules', 'example', 'slices'),
+      path.join('src', 'modules', 'category', 'slices'),
     );
   }
 
@@ -599,145 +599,198 @@ async function writeZustandOverlay(clientDir, profile) {
       ? `import { create } from "zustand";
 
 export const useAppStore = create((set) => ({
-  example: {
+  category: {
     items: [],
     selected: null,
     status: "idle",
     error: null,
   },
-  setExampleItems: (items) =>
-    set((state) => ({ example: { ...state.example, items, status: "succeeded", error: null } })),
-  setExampleError: (error) =>
-    set((state) => ({ example: { ...state.example, status: "failed", error } })),
-  setExampleStatus: (status) =>
-    set((state) => ({ example: { ...state.example, status } })),
+  setCategoryItems: (items) =>
+    set((state) => ({ category: { ...state.category, items, status: "succeeded", error: null } })),
+  setCategorySelected: (selected) =>
+    set((state) => ({ category: { ...state.category, selected, status: "succeeded", error: null } })),
+  setCategoryError: (error) =>
+    set((state) => ({ category: { ...state.category, status: "failed", error } })),
+  setCategoryStatus: (status) =>
+    set((state) => ({ category: { ...state.category, status } })),
 }));
 `
       : `import { create } from "zustand";
 
-type ExampleItem = { id: string; name: string; description: string };
+type CategoryItem = { id: string; name: string; description: string; createdAtUtc?: string };
 
 type AppState = {
-  example: {
-    items: ExampleItem[];
-    selected: ExampleItem | null;
+  category: {
+    items: CategoryItem[];
+    selected: CategoryItem | null;
     status: "idle" | "loading" | "succeeded" | "failed";
     error: string | null;
   };
-  setExampleItems: (items: ExampleItem[]) => void;
-  setExampleError: (error: string | null) => void;
-  setExampleStatus: (status: AppState["example"]["status"]) => void;
+  setCategoryItems: (items: CategoryItem[]) => void;
+  setCategorySelected: (selected: CategoryItem | null) => void;
+  setCategoryError: (error: string | null) => void;
+  setCategoryStatus: (status: AppState["category"]["status"]) => void;
 };
 
 export const useAppStore = create<AppState>((set) => ({
-  example: {
+  category: {
     items: [],
     selected: null,
     status: "idle",
     error: null,
   },
-  setExampleItems: (items) =>
-    set((state) => ({ example: { ...state.example, items, status: "succeeded", error: null } })),
-  setExampleError: (error) =>
-    set((state) => ({ example: { ...state.example, status: "failed", error } })),
-  setExampleStatus: (status) =>
-    set((state) => ({ example: { ...state.example, status } })),
+  setCategoryItems: (items) =>
+    set((state) => ({ category: { ...state.category, items, status: "succeeded", error: null } })),
+  setCategorySelected: (selected) =>
+    set((state) => ({ category: { ...state.category, selected, status: "succeeded", error: null } })),
+  setCategoryError: (error) =>
+    set((state) => ({ category: { ...state.category, status: "failed", error } })),
+  setCategoryStatus: (status) =>
+    set((state) => ({ category: { ...state.category, status } })),
 }));
 `,
   );
 
   await writeFile(
-    path.join(clientDir, 'src', 'modules', 'example', 'hooks', `useExamplesController.${profile.ext === 'js' ? 'js' : 'ts'}`),
-    renderZustandExampleController(profile.language === 'javascript'),
+    path.join(clientDir, 'src', 'modules', 'category', 'hooks', `useCategoriesController.${profile.ext === 'js' ? 'js' : 'ts'}`),
+    renderZustandCategoryController(profile.language === 'javascript'),
   );
 
   await writeFile(
-    path.join(clientDir, 'src', 'modules', 'example', `index.${profile.ext}`),
-    `export { default as ExamplesPage } from "./pages/ExamplesPage";
-export { useExamplesController } from "./hooks/useExamplesController";
-export { exampleService } from "./services/example.service";
+    path.join(clientDir, 'src', 'modules', 'category', `index.${profile.ext}`),
+    `export { default as CategoriesPage } from "./pages/CategoriesPage";
+export { default as CreateCategoryPage } from "./pages/CreateCategoryPage";
+export { default as EditCategoryPage } from "./pages/EditCategoryPage";
+export { default as CategoryDetailsPage } from "./pages/CategoryDetailsPage";
+export { useCategoriesController } from "./hooks/useCategoriesController";
+export { categoryService } from "./services/category.service";
 `,
   );
 }
 
-function renderZustandExampleController(isJs) {
+function renderZustandCategoryController(isJs) {
   return `"use client";
 
 import { useCallback } from "react";
 import { useAppStore } from "@/store/use-app-store";
-import { exampleService } from "../services/example.service";
-${isJs ? '' : `import type { CreateExampleInput, ExampleQuery } from "../types/example.types";
+import { categoryService } from "../services/category.service";
+${isJs ? '' : `import type { CreateCategoryInput, CategoryQuery, UpdateCategoryInput } from "../types/category.types";
 `}
-export function useExamplesController() {
-  const items = useAppStore((state) => state.example.items);
-  const selected = useAppStore((state) => state.example.selected);
-  const status = useAppStore((state) => state.example.status);
-  const error = useAppStore((state) => state.example.error);
-  const setExampleItems = useAppStore((state) => state.setExampleItems);
-  const setExampleError = useAppStore((state) => state.setExampleError);
-  const setExampleStatus = useAppStore((state) => state.setExampleStatus);
+export function useCategoriesController() {
+  const items = useAppStore((state) => state.category.items);
+  const selected = useAppStore((state) => state.category.selected);
+  const status = useAppStore((state) => state.category.status);
+  const error = useAppStore((state) => state.category.error);
+  const setCategoryItems = useAppStore((state) => state.setCategoryItems);
+  const setCategorySelected = useAppStore((state) => state.setCategorySelected);
+  const setCategoryError = useAppStore((state) => state.setCategoryError);
+  const setCategoryStatus = useAppStore((state) => state.setCategoryStatus);
 
-  const load = useCallback(${isJs ? '(query)' : '(query: ExampleQuery)'} => {
-    setExampleStatus("loading");
-    void exampleService
+  const load = useCallback(${isJs ? '(query)' : '(query: CategoryQuery)'} => {
+    setCategoryStatus("loading");
+    void categoryService
       .search(query)
-      .then((result) => setExampleItems(result.items ?? result.data ?? []))
-      .catch((err) => setExampleError(err instanceof Error ? err.message : "Unable to load examples"));
-  }, [setExampleError, setExampleItems, setExampleStatus]);
+      .then((result) => setCategoryItems(result.items ?? result.data ?? []))
+      .catch((err) => setCategoryError(err instanceof Error ? err.message : "Unable to load categories"));
+  }, [setCategoryError, setCategoryItems, setCategoryStatus]);
 
-  const create = useCallback(${isJs ? '(input)' : '(input: CreateExampleInput)'} => {
-    void exampleService
+  const loadById = useCallback(${isJs ? '(id)' : '(id: string)'} => {
+    setCategoryStatus("loading");
+    void categoryService
+      .getById(id)
+      .then((item) => setCategorySelected(item))
+      .catch((err) => setCategoryError(err instanceof Error ? err.message : "Unable to load category"));
+  }, [setCategoryError, setCategorySelected, setCategoryStatus]);
+
+  const create = useCallback(${isJs ? '(input)' : '(input: CreateCategoryInput)'} => {
+    void categoryService
       .create(input)
-      .then((item) => setExampleItems([item, ...useAppStore.getState().example.items]))
-      .catch((err) => setExampleError(err instanceof Error ? err.message : "Unable to create example"));
-  }, [setExampleError, setExampleItems]);
+      .then((item) => setCategoryItems([item, ...useAppStore.getState().category.items]))
+      .catch((err) => setCategoryError(err instanceof Error ? err.message : "Unable to create category"));
+  }, [setCategoryError, setCategoryItems]);
 
-  return { items, selected, status, error, load, loadById: () => undefined, create, update: () => undefined };
+  const update = useCallback(${isJs ? '(input)' : '(input: UpdateCategoryInput)'} => {
+    void categoryService
+      .update(input)
+      .then((item) => {
+        const current = useAppStore.getState().category.items;
+        setCategoryItems(current.map((entry) => (entry.id === item.id ? item : entry)));
+        setCategorySelected(item);
+      })
+      .catch((err) => setCategoryError(err instanceof Error ? err.message : "Unable to update category"));
+  }, [setCategoryError, setCategoryItems, setCategorySelected]);
+
+  return { items, selected, status, error, load, loadById, create, update };
 }
 `;
 }
 
 async function writeNoneStateOverlay(clientDir, profile) {
   await writeFile(
-    path.join(clientDir, 'src', 'modules', 'example', 'hooks', `useExamplesController.${profile.ext}`),
+    path.join(clientDir, 'src', 'modules', 'category', 'hooks', `useCategoriesController.${profile.ext}`),
     `"use client";
 
 import { useCallback, useState } from "react";
-import { exampleService } from "../services/example.service";
+import { categoryService } from "../services/category.service";
 
-export function useExamplesController() {
-  const [items, setItems] = useState${profile.language === 'javascript' ? '' : '<unknown[]>'}([]);
+export function useCategoriesController() {
+  const [items, setItems] = useState${profile.language === 'javascript' ? '' : '<{ id: string; name: string; description: string; createdAtUtc?: string }[]>'}([]);
+  const [selected, setSelected] = useState${profile.language === 'javascript' ? '' : '<{ id: string; name: string; description: string; createdAtUtc?: string } | null>'}(null);
   const [status, setStatus] = useState${profile.language === 'javascript' ? '' : '<"idle" | "loading" | "succeeded" | "failed">'}("idle");
   const [error, setError] = useState${profile.language === 'javascript' ? '' : '<string | null>'}(null);
 
   const load = useCallback((query${profile.language === 'javascript' ? '' : ': { page: number; pageSize: number }'}) => {
     setStatus("loading");
-    void exampleService
+    void categoryService
       .search(query)
       .then((result) => {
         setItems(result.items ?? result.data ?? []);
         setStatus("succeeded");
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "Unable to load examples");
+        setError(err instanceof Error ? err.message : "Unable to load categories");
+        setStatus("failed");
+      });
+  }, []);
+
+  const loadById = useCallback((id${profile.language === 'javascript' ? '' : ': string'}) => {
+    setStatus("loading");
+    void categoryService
+      .getById(id)
+      .then((item) => {
+        setSelected(item);
+        setStatus("succeeded");
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Unable to load category");
         setStatus("failed");
       });
   }, []);
 
   const create = useCallback((input${profile.language === 'javascript' ? '' : ': { name: string; description: string }'}) => {
-    void exampleService.create(input).then((item) => setItems((current) => [item, ...current]));
+    void categoryService.create(input).then((item) => setItems((current) => [item, ...current]));
   }, []);
 
-  return { items, selected: null, pagination: null, status, error, load, loadById: () => undefined, create, update: () => undefined };
+  const update = useCallback((input${profile.language === 'javascript' ? '' : ': { id: string; name: string; description: string }'}) => {
+    void categoryService.update(input).then((item) => {
+      setSelected(item);
+      setItems((current) => current.map((entry) => (entry.id === item.id ? item : entry)));
+    });
+  }, []);
+
+  return { items, selected, pagination: null, status, error, load, loadById, create, update };
 }
 `,
   );
 
   await writeFile(
-    path.join(clientDir, 'src', 'modules', 'example', `index.${profile.ext}`),
-    `export { default as ExamplesPage } from "./pages/ExamplesPage";
-export { useExamplesController } from "./hooks/useExamplesController";
-export { exampleService } from "./services/example.service";
+    path.join(clientDir, 'src', 'modules', 'category', `index.${profile.ext}`),
+    `export { default as CategoriesPage } from "./pages/CategoriesPage";
+export { default as CreateCategoryPage } from "./pages/CreateCategoryPage";
+export { default as EditCategoryPage } from "./pages/EditCategoryPage";
+export { default as CategoryDetailsPage } from "./pages/CategoryDetailsPage";
+export { useCategoriesController } from "./hooks/useCategoriesController";
+export { categoryService } from "./services/category.service";
 `,
   );
 }

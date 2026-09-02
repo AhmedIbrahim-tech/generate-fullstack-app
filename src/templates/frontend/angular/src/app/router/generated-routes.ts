@@ -5,16 +5,16 @@ import type { Routes } from "@angular/router";
 
 export const generatedWebsiteRoutes: Routes = [
   {
-    path: "examples",
+    path: "categories",
     loadChildren: () =>
-      import("../features/example/example.routes").then((m) => m.exampleRoutes),
+      import("../features/category/category.routes").then((m) => m.categoryRoutes),
   },
 ];
 
 export const generatedDashboardRoutes: Routes = [
   {
-    path: "example",
+    path: "category",
     loadChildren: () =>
-      import("../features/example/example.routes").then((m) => m.exampleRoutes),
+      import("../features/category/category.routes").then((m) => m.categoryRoutes),
   },
 ];

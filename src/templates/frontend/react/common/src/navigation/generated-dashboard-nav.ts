@@ -13,9 +13,9 @@ export type DashboardNavItem = {
 
 export const generatedDashboardNav: DashboardNavItem[] = [
   {
-    labelKey: "nav.example",
-    label: "Example",
-    href: "/dashboard/example",
+    labelKey: "nav.category",
+    label: "Category",
+    href: "/dashboard/category",
     icon: Boxes,
   },
 ];

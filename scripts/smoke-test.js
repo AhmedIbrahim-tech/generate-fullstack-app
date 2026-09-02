@@ -69,7 +69,7 @@ function generate(projectName, extraArgs, outputDir) {
   runCommand(
     process.execPath,
     [
-      path.join(generatorRoot, 'bin', 'create-fullstack-app.js'),
+      path.join(generatorRoot, 'bin', 'generate-fullstack-app.js'),
       projectName,
       '--yes',
       '--package-manager',
@@ -194,11 +194,11 @@ async function main() {
     await assertExists(nextLayout.frontendDir, 'Next Frontend');
     await assertExists(frontendFile(nextLayout, 'src', 'app'), 'Next App Router');
     await assertExists(
-      frontendFile(nextLayout, 'src', 'modules', 'example', 'slices', 'thunks'),
+      frontendFile(nextLayout, 'src', 'modules', 'category', 'slices', 'thunks'),
       'Next slices/thunks',
     );
     await assertMissing(
-      frontendFile(nextLayout, 'src', 'modules', 'example', 'thunks'),
+      frontendFile(nextLayout, 'src', 'modules', 'category', 'thunks'),
       'Next sibling thunks absent',
     );
     await assertExists(frontendFile(nextLayout, 'src', 'lib', 'api', 'server-api.ts'), 'Next server-api');
@@ -222,11 +222,11 @@ async function main() {
     await assertExists(frontendFile(viteLayout, 'vite.config.ts'), 'Vite config');
     await assertExists(frontendFile(viteLayout, 'src', 'app', 'router', 'app-router.tsx'), 'React Router');
     await assertExists(
-      frontendFile(viteLayout, 'src', 'modules', 'example', 'slices', 'thunks'),
+      frontendFile(viteLayout, 'src', 'modules', 'category', 'slices', 'thunks'),
       'Vite slices/thunks',
     );
     await assertMissing(
-      frontendFile(viteLayout, 'src', 'modules', 'example', 'thunks'),
+      frontendFile(viteLayout, 'src', 'modules', 'category', 'thunks'),
       'Vite sibling thunks absent',
     );
     await assertExists(frontendFile(viteLayout, 'src', 'store', 'store.ts'), 'Vite Redux store');
@@ -253,23 +253,23 @@ async function main() {
     await assertBackend(angularLayout);
     await assertExists(frontendFile(angularLayout, 'src', 'app', 'app.routes.ts'), 'Angular app.routes');
     await assertExists(
-      frontendFile(angularLayout, 'src', 'app', 'features', 'example'),
-      'Angular example feature',
+      frontendFile(angularLayout, 'src', 'app', 'features', 'category'),
+      'Angular category feature',
     );
     await assertExists(
-      frontendFile(angularLayout, 'src', 'app', 'features', 'example', 'store', 'example.actions.ts'),
+      frontendFile(angularLayout, 'src', 'app', 'features', 'category', 'store', 'category.actions.ts'),
       'NgRx actions',
     );
     await assertExists(
-      frontendFile(angularLayout, 'src', 'app', 'features', 'example', 'store', 'example.reducer.ts'),
+      frontendFile(angularLayout, 'src', 'app', 'features', 'category', 'store', 'category.reducer.ts'),
       'NgRx reducer',
     );
     await assertExists(
-      frontendFile(angularLayout, 'src', 'app', 'features', 'example', 'store', 'example.effects.ts'),
+      frontendFile(angularLayout, 'src', 'app', 'features', 'category', 'store', 'category.effects.ts'),
       'NgRx effects',
     );
     await assertExists(
-      frontendFile(angularLayout, 'src', 'app', 'features', 'example', 'store', 'example.selectors.ts'),
+      frontendFile(angularLayout, 'src', 'app', 'features', 'category', 'store', 'category.selectors.ts'),
       'NgRx selectors',
     );
     const angularPkg = await readJson(frontendFile(angularLayout, 'package.json'));
@@ -285,7 +285,7 @@ async function main() {
       'framer-motion',
     ], 'Angular');
     await assertMissing(
-      frontendFile(angularLayout, 'src', 'modules', 'example', 'slices', 'thunks'),
+      frontendFile(angularLayout, 'src', 'modules', 'category', 'slices', 'thunks'),
       'Angular does not use React thunk folders',
     );
     const angularManifest = angularLayout.manifest;

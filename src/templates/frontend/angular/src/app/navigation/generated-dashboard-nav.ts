@@ -9,8 +9,8 @@ export type DashboardNavItem = {
 
 export const generatedDashboardNav: DashboardNavItem[] = [
   {
-    labelKey: "nav.example",
-    label: "Example",
-    path: "/dashboard/example",
+    labelKey: "nav.category",
+    label: "Category",
+    path: "/dashboard/category",
   },
 ];

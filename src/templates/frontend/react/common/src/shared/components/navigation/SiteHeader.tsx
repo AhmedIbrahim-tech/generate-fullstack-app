@@ -15,7 +15,7 @@ export function SiteHeader({ productName, Link, pathname = "/" }: SiteHeaderProp
 
   const links = [
     { href: "/", label: "Product" },
-    { href: "/examples", label: "Architecture" },
+    { href: "/categories", label: "Categories" },
     { href: "/dashboard", label: "Dashboard" },
   ];
 

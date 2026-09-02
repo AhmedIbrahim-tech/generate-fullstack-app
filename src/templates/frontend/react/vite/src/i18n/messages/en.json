@@ -5,8 +5,8 @@
     "ctaPrimary": "Open dashboard",
     "ctaSecondary": "Sign in"
   },
-  "example": {
-    "title": "Architecture sample",
-    "description": "A working slice of the client pattern: page, controller, service, and API client."
+  "category": {
+    "title": "Categories",
+    "description": "Organize products into named categories with a short description."
   }
 }

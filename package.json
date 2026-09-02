@@ -1,5 +1,5 @@
 {
-  "name": "create-fullstack-app",
+  "name": "generate-fullstack-app",
   "version": "4.0.0",
   "description": "Generic full-stack project, feature, and production infrastructure generator for ASP.NET Core Clean Architecture with React (Next.js or Vite) or Angular clients.",
   "keywords": [
@@ -20,7 +20,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "create-fullstack-app": "./bin/create-fullstack-app.js",
+    "generate-fullstack-app": "./bin/generate-fullstack-app.js",
     "create-fullstack-feature": "./bin/create-fullstack-feature.js",
     "create-fullstack-module": "./bin/create-fullstack-module.js"
   },

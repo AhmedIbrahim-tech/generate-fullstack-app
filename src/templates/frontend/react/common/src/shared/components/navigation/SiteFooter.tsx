@@ -34,7 +34,7 @@ export function SiteFooter({ productName, Link }: SiteFooterProps) {
               <Link href="/dashboard">Dashboard</Link>
             </li>
             <li>
-              <Link href="/examples">Documentation</Link>
+              <Link href="/categories">Categories</Link>
             </li>
             <li>
               <Link href="/login">Sign in</Link>

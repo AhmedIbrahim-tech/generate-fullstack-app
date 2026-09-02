@@ -2,12 +2,29 @@
 // DO NOT EDIT MANUALLY
 
 import type { RouteObject } from "react-router-dom";
-import ExamplesPage from "@/modules/example/pages/ExamplesPage";
+import { useParams } from "react-router-dom";
+import CategoriesPage from "@/modules/category/pages/CategoriesPage";
+import CreateCategoryPage from "@/modules/category/pages/CreateCategoryPage";
+import CategoryDetailsPage from "@/modules/category/pages/CategoryDetailsPage";
+import EditCategoryPage from "@/modules/category/pages/EditCategoryPage";
+
+function CategoryDetailsRoute() {
+  const { id } = useParams();
+  return <CategoryDetailsPage id={id ?? ""} />;
+}
+
+function CategoryEditRoute() {
+  const { id } = useParams();
+  return <EditCategoryPage id={id ?? ""} />;
+}
 
 export const generatedWebsiteRoutes: RouteObject[] = [
-  { path: "/examples", element: <ExamplesPage /> },
+  { path: "/categories", element: <CategoriesPage /> },
 ];
 
 export const generatedDashboardRoutes: RouteObject[] = [
-  { path: "/dashboard/example", element: <ExamplesPage /> },
+  { path: "/dashboard/category", element: <CategoriesPage /> },
+  { path: "/dashboard/category/create", element: <CreateCategoryPage /> },
+  { path: "/dashboard/category/:id/edit", element: <CategoryEditRoute /> },
+  { path: "/dashboard/category/:id", element: <CategoryDetailsRoute /> },
 ];

@@ -19,8 +19,8 @@ export function DashboardHome({ productName, Link }: DashboardHomeProps) {
         title="Overview"
         description={`${productName} workspace. Generate features to populate navigation, APIs, and tables.`}
         actions={
-          <Link href="/examples" className="ui-btn ui-btn-ghost">
-            Architecture sample
+          <Link href="/categories" className="ui-btn ui-btn-ghost">
+            Categories
           </Link>
         }
       />
@@ -42,8 +42,8 @@ export function DashboardHome({ productName, Link }: DashboardHomeProps) {
             <Link href="/" className="ui-btn ui-btn-ghost">
               View public site
             </Link>
-            <Link href="/examples" className="ui-btn ui-btn-ghost">
-              Open sample module
+            <Link href="/categories" className="ui-btn ui-btn-ghost">
+              Open categories
             </Link>
             <Link href="/login" className="ui-btn ui-btn-primary">
               Account

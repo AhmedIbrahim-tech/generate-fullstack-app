@@ -29,13 +29,13 @@ export async function generateFeature(resolvedOptions) {
     resolvedOptions.projectRoot ?? (await findProjectRoot(process.cwd()));
 
   if (!projectRoot) {
-    throw new Error('This directory is not a create-fullstack-app project.');
+    throw new Error('This directory is not a generate-fullstack-app project.');
   }
 
   const manifest = await readManifest(projectRoot);
   const projectName = manifest.projectName;
   if (!projectName) {
-    throw new Error('Project manifest is missing projectName. Re-run create-fullstack-app or set projectName in .fullstack-app.json.');
+    throw new Error('Project manifest is missing projectName. Re-run generate-fullstack-app or set projectName in .fullstack-app.json.');
   }
   const frontendStrategy = resolveFrontendStrategy(manifest);
   const hasBackend = manifest.backend?.enabled === true;
@@ -473,7 +473,7 @@ async function generateMigration(projectRoot, config) {
 export async function listFeatures(cwd = process.cwd()) {
   const projectRoot = await findProjectRoot(cwd);
   if (!projectRoot) {
-    throw new Error('This directory is not a create-fullstack-app project.');
+    throw new Error('This directory is not a generate-fullstack-app project.');
   }
 
   const manifest = await readManifest(projectRoot);

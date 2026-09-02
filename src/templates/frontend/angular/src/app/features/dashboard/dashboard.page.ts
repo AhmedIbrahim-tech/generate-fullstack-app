@@ -13,7 +13,7 @@ import { EmptyStateComponent } from "../../shared/components/empty-state.compone
       title="Overview"
       description="__DISPLAY_NAME__ workspace. Generate features to populate navigation, APIs, and tables."
     >
-      <a routerLink="/examples" class="ui-btn ui-btn-ghost">Architecture sample</a>
+      <a routerLink="/categories" class="ui-btn ui-btn-ghost">Categories</a>
     </app-page-header>
 
     <div class="ui-grid ui-grid-4" style="margin-bottom: 1.25rem">
@@ -29,7 +29,7 @@ import { EmptyStateComponent } from "../../shared/components/empty-state.compone
         <p class="ui-note" style="margin: 0.35rem 0 1rem">These links stay inside the generated app.</p>
         <div style="display:flex;flex-wrap:wrap;gap:0.6rem">
           <a routerLink="/" class="ui-btn ui-btn-ghost">View public site</a>
-          <a routerLink="/examples" class="ui-btn ui-btn-ghost">Open sample module</a>
+          <a routerLink="/categories" class="ui-btn ui-btn-ghost">Open categories</a>
           <a routerLink="/login" class="ui-btn ui-btn-primary">Account</a>
         </div>
       </section>

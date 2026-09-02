@@ -21,7 +21,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from "@angular/router";
 
           <nav class="ui-nav-links" aria-label="Primary">
             <a routerLink="/" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: true }" class="ui-nav-link">Product</a>
-            <a routerLink="/examples" routerLinkActive="is-active" class="ui-nav-link">Architecture</a>
+            <a routerLink="/categories" routerLinkActive="is-active" class="ui-nav-link">Categories</a>
             <a routerLink="/dashboard" routerLinkActive="is-active" class="ui-nav-link">Dashboard</a>
           </nav>
 
@@ -46,7 +46,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from "@angular/router";
         @if (open()) {
           <div class="ui-mobile-panel is-open">
             <a routerLink="/" class="ui-nav-link" (click)="open.set(false)">Product</a>
-            <a routerLink="/examples" class="ui-nav-link" (click)="open.set(false)">Architecture</a>
+            <a routerLink="/categories" class="ui-nav-link" (click)="open.set(false)">Categories</a>
             <a routerLink="/dashboard" class="ui-nav-link" (click)="open.set(false)">Dashboard</a>
             <a routerLink="/login" class="ui-btn ui-btn-ghost" (click)="open.set(false)">Sign in</a>
             <a routerLink="/register" class="ui-btn ui-btn-primary" (click)="open.set(false)">Create account</a>
@@ -69,7 +69,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from "@angular/router";
           <div>
             <ul class="ui-footer-links">
               <li><a routerLink="/dashboard">Dashboard</a></li>
-              <li><a routerLink="/examples">Documentation</a></li>
+              <li><a routerLink="/categories">Categories</a></li>
               <li><a routerLink="/login">Sign in</a></li>
               <li><a href="https://github.com" rel="noreferrer" target="_blank">Source</a></li>
             </ul>
