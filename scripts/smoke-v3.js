@@ -103,8 +103,8 @@ async function verifyProductArchitecture(layout, framework) {
     'Product application feature',
   );
   await assertExists(
-    backendFile(layout, 'API', 'Endpoints', 'ProductsEndpoints.cs'),
-    'Products endpoints',
+    backendFile(layout, 'API', 'Controllers', 'ProductsController.cs'),
+    'Products controller',
   );
   await assertExists(
     backendFile(layout, 'API', 'Contracts', 'Router.cs'),

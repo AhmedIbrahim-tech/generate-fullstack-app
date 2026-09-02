@@ -56,7 +56,15 @@ test('EF Core + Identity + JWT remains a supported combination', () => {
     assert.ok(files.some((file) => file.relativePath.replaceAll('\\', '/').includes('Infrastructure/Identity/ApplicationUser.cs')));
     assert.ok(files.some((file) => file.relativePath.replaceAll('\\', '/').includes('Infrastructure/Authentication/JwtTokenService.cs')));
     assert.ok(files.some((file) => file.relativePath.replaceAll('\\', '/').endsWith('AuthenticationServiceExtensions.cs')));
-    assert.ok(files.some((file) => file.relativePath.replaceAll('\\', '/').endsWith('AuthEndpoints.cs')));
+    assert.ok(files.some((file) => file.relativePath.replaceAll('\\', '/').endsWith('API/Controllers/AuthController.cs')));
+    assert.ok(files.every((file) => !file.relativePath.includes('Endpoints')));
+    const authController = files.find((file) =>
+      file.relativePath.replaceAll('\\', '/').endsWith('API/Controllers/AuthController.cs'),
+    );
+    assert.match(authController.contents, /\[ApiController\]/);
+    assert.match(authController.contents, /sealed class AuthController : ApiControllerBase/);
+    assert.match(authController.contents, /\[HttpPost\(Router\.Authentication\.Login\)\]/);
+    assert.doesNotMatch(authController.contents, /MapGet\(|MapPost\(|MapGroup\(/);
     assert.ok(files.every((file) => !file.relativePath.includes('.g.cs')));
   } finally {
     setModuleManifestContext(null);

@@ -239,7 +239,7 @@ async function removeObsoleteArchitectureFiles(backendDir) {
   const obsolete = [
     path.join('API', 'Routing', 'Router.cs'),
     path.join('API', 'ExceptionHandling', 'GlobalExceptionHandler.cs'),
-    path.join('API', 'Controllers', 'ApiControllerBase.cs'),
+    path.join('API', 'Endpoints', 'ApiControllerBase.cs'),
     path.join('API', 'Controllers', 'WeatherForecastController.cs'),
     path.join('Application', 'DependencyInjection.cs'),
     path.join('Infrastructure', 'DependencyInjection.cs'),
@@ -255,7 +255,7 @@ async function removeObsoleteArchitectureFiles(backendDir) {
   }
 
   for (const relativeDir of [
-    path.join('API', 'Controllers'),
+    path.join('API', 'Endpoints'),
     path.join('API', 'Routing'),
     path.join('API', 'ExceptionHandling'),
   ]) {
@@ -296,6 +296,9 @@ async function overlayBackendTemplates(options, config, backendDir) {
 
   await copyTemplate(path.join(templatesRoot(), 'backend'), backendDir, replacements);
   await removeObsoleteArchitectureFiles(backendDir);
+  await removeFilesMatching(path.join(backendDir, 'API', 'Endpoints'), () => true);
+  await ensureDir(path.join(backendDir, 'API', 'Filters'));
+  await ensureDir(path.join(backendDir, 'API', 'Attributes'));
 
   if (config.architecture === 'services') {
     await removeFilesMatching(path.join(backendDir, 'Application', 'Behaviors'), () => true);

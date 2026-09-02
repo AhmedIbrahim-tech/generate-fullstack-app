@@ -78,6 +78,6 @@ export function backendConflictPaths(config) {
   return [
     getBackendFilePath(config, 'Domain', 'Entities', `${singularName}.cs`),
     getBackendFilePath(config, 'Application', 'Features', applicationFeatureName(config)),
-    getBackendFilePath(config, 'API', 'Endpoints', `${pluralName}Endpoints.cs`),
+    getBackendFilePath(config, 'API', 'Controllers', `${pluralName}Controller.cs`),
   ];
 }

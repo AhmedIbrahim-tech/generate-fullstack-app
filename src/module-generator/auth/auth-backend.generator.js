@@ -184,7 +184,7 @@ export function planAuthBackend(config) {
 
   // --- API ----------------------------------------------------------------
   files.push(
-    { relativePath: api('Endpoints', 'AuthEndpoints.cs'), contents: renderAuthController(ctx) },
+    { relativePath: api('Controllers', 'AuthController.cs'), contents: renderAuthController(ctx) },
   );
 
   return files;
@@ -233,7 +233,7 @@ export function authBackendConflictPaths(config) {
     path.join('Infrastructure', 'DependencyInjection', 'AuthenticationServiceExtensions.cs'),
     path.join('Application', 'Features', 'Authentication'),
     path.join('Application', 'Common', 'Authorization', 'AppPermissions.cs'),
-    path.join('API', 'Endpoints', 'AuthEndpoints.cs'),
+    path.join('API', 'Controllers', 'AuthController.cs'),
     path.join('Infrastructure', 'Persistence', 'Entities', 'RefreshToken.cs'),
   ];
 }
@@ -2137,13 +2137,14 @@ using ${ns}.Application.Features.Authentication.Queries.GetMe;
 using ${ns}.Application.Features.Authentication.Commands.RefreshToken;
 using ${ns}.Application.Features.Authentication.Commands.Register;
 
-namespace ${ns}.API.Endpoints;
+namespace ${ns}.API.Controllers;
 
-public sealed class AuthEndpoints : ApiControllerBase
+[ApiController]
+public sealed class AuthController : ApiControllerBase
 {
     private readonly ISender _sender;
 
-    public AuthEndpoints(ISender sender)
+    public AuthController(ISender sender)
     {
         _sender = sender;
     }

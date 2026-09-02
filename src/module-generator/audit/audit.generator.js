@@ -587,7 +587,7 @@ function planAuditApplication(ns) {
       contents: renderAuditGetByIdHandler(ns),
     },
     {
-      relativePath: paths.api('Endpoints', 'AuditLogsEndpoints.cs'),
+      relativePath: paths.api('Controllers', 'AuditLogsController.cs'),
       contents: renderAuditController(ns),
     },
   ];
@@ -872,14 +872,15 @@ using ${ns}.API.Contracts;
 using ${ns}.Application.Features.AuditLogs.Queries.GetById;
 using ${ns}.Application.Features.AuditLogs.Queries.Search;
 
-namespace ${ns}.API.Endpoints;
+namespace ${ns}.API.Controllers;
 
+[ApiController]
 [Authorize]
-public sealed class AuditLogsEndpoints : ApiControllerBase
+public sealed class AuditLogsController : ApiControllerBase
 {
     private readonly ISender _sender;
 
-    public AuditLogsEndpoints(ISender sender)
+    public AuditLogsController(ISender sender)
     {
         _sender = sender;
     }

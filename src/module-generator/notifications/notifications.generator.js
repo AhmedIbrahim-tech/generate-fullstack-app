@@ -224,7 +224,7 @@ function planNotificationsBackend(ns) {
       contents: renderSendValidator(ns),
     },
     {
-      relativePath: paths.api('Endpoints', 'NotificationsEndpoints.cs'),
+      relativePath: paths.api('Controllers', 'NotificationsController.cs'),
       contents: renderController(ns),
     },
   );
@@ -876,14 +876,15 @@ using ${ns}.Application.Features.Notifications.Commands.MarkAllAsRead;
 using ${ns}.Application.Features.Notifications.Commands.MarkAsRead;
 using ${ns}.Application.Features.Notifications.Commands.Send;
 
-namespace ${ns}.API.Endpoints;
+namespace ${ns}.API.Controllers;
 
+[ApiController]
 [Authorize]
-public sealed class NotificationsEndpoints : ApiControllerBase
+public sealed class NotificationsController : ApiControllerBase
 {
     private readonly ISender _sender;
 
-    public NotificationsEndpoints(ISender sender)
+    public NotificationsController(ISender sender)
     {
         _sender = sender;
     }

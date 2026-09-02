@@ -157,12 +157,20 @@ test('feature generator plans a CQRS Category feature', () => {
   assert.ok(paths.some((item) => item.endsWith('UpdateCategoryCommand.cs')));
   assert.ok(paths.some((item) => item.endsWith('DeleteCategoryCommand.cs')));
   assert.ok(paths.some((item) => item.endsWith('GetCategoryByIdQuery.cs')));
-  assert.ok(paths.some((item) => item.endsWith('CategoriesEndpoints.cs')));
+  assert.ok(paths.some((item) => item.endsWith('API/Controllers/CategoriesController.cs')));
+  assert.ok(paths.every((item) => !item.includes('/Endpoints/')));
   assert.ok(paths.some((item) => item.includes('Features/Category/Commands/Create/')));
   assert.ok(paths.every((item) => !item.includes('.g.cs')));
   assert.ok(paths.some((item) => item.endsWith('CategoryConfiguration.cs')));
   assert.match(joined, /CreateCategoryCommandHandler/);
   assert.match(joined, /IRequestHandler/);
+  assert.match(joined, /\[ApiController\]/);
+  assert.match(joined, /sealed class CategoriesController : ApiControllerBase/);
+  assert.match(joined, /\[HttpPost\(Router\.Categories\.Create\)\]/);
+  assert.match(joined, /\[HttpGet\(Router\.Categories\.ById\)\]/);
+  assert.match(joined, /\[HttpPut\(Router\.Categories\.Update\)\]/);
+  assert.match(joined, /\[HttpDelete\(Router\.Categories\.Delete\)\]/);
+  assert.doesNotMatch(joined, /MapGet\(|MapPost\(|MapGroup\(/);
   assert.doesNotMatch(joined, /\bExample\b/);
 });
 
@@ -175,7 +183,7 @@ test('feature generator plans Application Services Category types', () => {
 
   assert.ok(paths.some((item) => item.endsWith('ICategoriesService.cs')));
   assert.ok(paths.some((item) => item.endsWith('CategoriesService.cs')));
-  assert.ok(paths.some((item) => item.endsWith('CategoriesEndpoints.cs')));
+  assert.ok(paths.some((item) => item.endsWith('CategoriesController.cs')));
   assert.match(joined, /ICategoriesService/);
   assert.doesNotMatch(joined, /IRequestHandler/);
 });

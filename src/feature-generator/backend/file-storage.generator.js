@@ -55,13 +55,13 @@ export function planFileStorageInfrastructure(projectName, config = {}) {
     files.push(
       infra('Application', ['Features', 'Files', 'Interfaces', 'IFilesService.cs'], renderFilesServiceInterface(ns)),
       infra('Application', ['Features', 'Files', 'FilesService.cs'], renderFilesService(ns, dapperOnly)),
-      infra('API', ['Endpoints', 'FilesEndpoints.cs'], renderFilesServiceController(ns)),
+      infra('API', ['Controllers', 'FilesController.cs'], renderFilesServiceController(ns)),
     );
   } else {
     files.push(
       infra('Application', ['Features', 'Files', 'Commands', 'Upload', 'UploadFileCommand.cs'], renderUploadCommand(ns)),
       infra('Application', ['Features', 'Files', 'Commands', 'Upload', 'UploadFileCommandHandler.cs'], renderUploadHandler(ns, dapperOnly)),
-      infra('API', ['Endpoints', 'FilesEndpoints.cs'], renderFilesController(ns)),
+      infra('API', ['Controllers', 'FilesController.cs'], renderFilesController(ns)),
     );
   }
 
@@ -521,13 +521,14 @@ using Microsoft.AspNetCore.Mvc;
 using ${ns}.API.Contracts;
 using ${ns}.Application.Features.Files.Commands.Upload;
 
-namespace ${ns}.API.Endpoints;
+namespace ${ns}.API.Controllers;
 
-public sealed class FilesEndpoints : ApiControllerBase
+[ApiController]
+public sealed class FilesController : ApiControllerBase
 {
     private readonly ISender _sender;
 
-    public FilesEndpoints(ISender sender)
+    public FilesController(ISender sender)
     {
         _sender = sender;
     }
@@ -707,13 +708,14 @@ using Microsoft.AspNetCore.Mvc;
 using ${ns}.API.Contracts;
 using ${ns}.Application.Features.Files.Interfaces;
 
-namespace ${ns}.API.Endpoints;
+namespace ${ns}.API.Controllers;
 
-public sealed class FilesEndpoints : ApiControllerBase
+[ApiController]
+public sealed class FilesController : ApiControllerBase
 {
     private readonly IFilesService _service;
 
-    public FilesEndpoints(IFilesService service)
+    public FilesController(IFilesService service)
     {
         _service = service;
     }

@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using __PASCAL_NAME__.Application.Common.Results;
 
-namespace __PASCAL_NAME__.API.Endpoints;
+namespace __PASCAL_NAME__.API.Controllers;
 
 [ApiController]
 public abstract class ApiControllerBase : ControllerBase

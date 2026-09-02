@@ -17,7 +17,7 @@ export function planApiFiles(config) {
 
   return [
     {
-      relativePath: getBackendFilePath(config, 'API', 'Endpoints', `${pluralName}Endpoints.cs`),
+      relativePath: getBackendFilePath(config, 'API', 'Controllers', `${pluralName}Controller.cs`),
       contents: isServicesArchitecture(config.architecture)
         ? renderServiceController(config)
         : renderController(config),
@@ -190,13 +190,14 @@ function renderController(config) {
 
   return `${usings.join('\n')}
 
-namespace ${ns}.API.Endpoints;
+namespace ${ns}.API.Controllers;
 
-${controllerAuthorizationAttribute(config)}public sealed class ${pluralName}Endpoints : ApiControllerBase
+[ApiController]
+${controllerAuthorizationAttribute(config)}public sealed class ${pluralName}Controller : ApiControllerBase
 {
     private readonly ISender _sender;
 
-    public ${pluralName}Endpoints(ISender sender)
+    public ${pluralName}Controller(ISender sender)
     {
         _sender = sender;
     }
@@ -329,13 +330,14 @@ function renderServiceController(config) {
 
   return `${usings.join('\n')}
 
-namespace ${ns}.API.Endpoints;
+namespace ${ns}.API.Controllers;
 
-${controllerAuthorizationAttribute(config)}public sealed class ${pluralName}Endpoints : ApiControllerBase
+[ApiController]
+${controllerAuthorizationAttribute(config)}public sealed class ${pluralName}Controller : ApiControllerBase
 {
     private readonly I${pluralName}Service _service;
 
-    public ${pluralName}Endpoints(I${pluralName}Service service)
+    public ${pluralName}Controller(I${pluralName}Service service)
     {
         _service = service;
     }

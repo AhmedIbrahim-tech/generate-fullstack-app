@@ -41,7 +41,7 @@ export async function writeGeneratedReadme(options) {
       backend.backgroundJobs === 'hangfire' ? '- **Background Jobs**: Hangfire Dashboard (`/hangfire`)' : '',
       '',
       'Folder structure:',
-      `- \`${prefix}API/\` — HTTP endpoints, \`Contracts/Router.cs\`, middleware, filters, layer DI`,
+      `- \`${prefix}API/\` — controllers, \`Contracts/Router.cs\`, middleware, filters, hubs, layer DI`,
       `- \`${prefix}Application/\` — feature use cases (\`Features/{Name}/Commands|Queries|DTOs\`), abstractions, layer DI`,
       `- \`${prefix}Domain/\` — entities, value objects, domain events, specifications, exceptions`,
       `- \`${prefix}Infrastructure/\` — persistence, identity, authentication implementations, seeders, layer DI`,

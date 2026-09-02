@@ -137,7 +137,7 @@ public static class LanguageSeeder
   });
 
   files.push({
-    relativePath: paths.api('Endpoints', 'LanguagesEndpoints.cs'),
+    relativePath: paths.api('Controllers', 'LanguagesController.cs'),
     contents: `using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ${ns}.API.Contracts;
@@ -145,13 +145,14 @@ using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Models;
 using ${ns}.Domain.Entities;
 
-namespace ${ns}.API.Endpoints;
+namespace ${ns}.API.Controllers;
 
-public sealed class LanguagesEndpoints : ApiControllerBase
+[ApiController]
+public sealed class LanguagesController : ApiControllerBase
 {
     private readonly IApplicationDbContext _db;
 
-    public LanguagesEndpoints(IApplicationDbContext db) => _db = db;
+    public LanguagesController(IApplicationDbContext db) => _db = db;
 
     [HttpGet(Router.Languages.Lookup)]
     public async Task<IActionResult> Lookup(CancellationToken ct)

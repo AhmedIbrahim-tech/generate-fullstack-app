@@ -122,7 +122,7 @@ export function planUsersModule(config) {
     registryUpdates,
     registrations,
     notes: [
-      'UsersEndpoints is protected: reads require Users.View, writes require Users.Manage.',
+      'UsersController is protected: reads require Users.View, writes require Users.Manage.',
       'UserDto is intentionally minimal and never exposes password hashes or security stamps.',
       'IUserDirectory is implemented in Infrastructure over UserManager/RoleManager from the auth module.',
     ],
@@ -191,7 +191,7 @@ function planUsersBackend(ns) {
       contents: renderChangeRolesValidator(ns),
     },
     {
-      relativePath: paths.api('Endpoints', 'UsersEndpoints.cs'),
+      relativePath: paths.api('Controllers', 'UsersController.cs'),
       contents: renderController(ns),
     },
     {
@@ -713,14 +713,15 @@ using ${ns}.Application.Features.Users.Queries.GetById;
 using ${ns}.Application.Features.Users.Queries.Search;
 using ${ns}.Application.Features.Users.Commands.Update;
 
-namespace ${ns}.API.Endpoints;
+namespace ${ns}.API.Controllers;
 
+[ApiController]
 [Authorize]
-public sealed class UsersEndpoints : ApiControllerBase
+public sealed class UsersController : ApiControllerBase
 {
     private readonly ISender _sender;
 
-    public UsersEndpoints(ISender sender)
+    public UsersController(ISender sender)
     {
         _sender = sender;
     }

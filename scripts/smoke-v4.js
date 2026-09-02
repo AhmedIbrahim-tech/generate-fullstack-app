@@ -137,8 +137,8 @@ async function assertAuthArchitecture(layout, library) {
     'RefreshToken entity',
   );
   await assertExists(
-    backendFile(layout, 'API', 'Endpoints', 'AuthEndpoints.cs'),
-    'AuthEndpoints',
+    backendFile(layout, 'API', 'Controllers', 'AuthController.cs'),
+    'AuthController',
   );
 
   const refreshEntity = await fs.readFile(
