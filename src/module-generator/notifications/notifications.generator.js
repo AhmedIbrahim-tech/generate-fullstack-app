@@ -18,12 +18,13 @@ import {
   isReact,
   isAngular,
   isNext,
-  dbSetPartials,
+  dbSetUpdates,
   currentUserAbstraction,
   moduleRegistrationFile,
   reactReducerUpdate,
   reactDashboardNavUpdate,
   finalizePlan,
+  routerUpdate,
 } from '../modules-orchestrator-helpers.js';
 import {
   buildAngularGeneratedRoutes,
@@ -43,6 +44,17 @@ export function planNotificationsModule(config) {
   const registryUpdates = [];
 
   registryUpdates.push(registerFeaturePermissions(config, 'Notifications', ['Send']));
+  registryUpdates.push(...dbSetUpdates(ns, 'Notification', 'Notifications'));
+  registryUpdates.push(
+    routerUpdate(ns, 'Notifications', 'Notifications', [
+      { name: 'Root' },
+      { name: 'Mine', suffix: '/Mine' },
+      { name: 'UnreadCount', suffix: '/UnreadCount' },
+      { name: 'Read', suffix: '/{id:guid}/Read' },
+      { name: 'ReadAll', suffix: '/ReadAll' },
+      { name: 'Send', suffix: '/Send' },
+    ]),
+  );
 
   // Backend ---------------------------------------------------------
   files.push(...planNotificationsBackend(ns));
@@ -135,7 +147,6 @@ function planNotificationsBackend(ns) {
     contents: renderNotificationEntity(ns),
   });
 
-  files.push(...dbSetPartials(ns, 'Notification', 'Notifications'));
   files.push({
     relativePath: paths.infrastructure(
       'Persistence',
@@ -163,58 +174,57 @@ function planNotificationsBackend(ns) {
   );
 
   files.push(
-    { relativePath: feature('Common', 'NotificationDto.cs'), contents: renderNotificationDto(ns) },
+    { relativePath: feature('DTOs', 'NotificationDto.cs'), contents: renderNotificationDto(ns) },
     {
-      relativePath: feature('Common', 'NotificationMappings.cs'),
+      relativePath: feature('Mapping', 'NotificationMappings.cs'),
       contents: renderNotificationMappings(ns),
     },
     {
-      relativePath: feature('GetMy', 'GetMyNotificationsQuery.cs'),
+      relativePath: feature('Queries', 'GetMy', 'GetMyNotificationsQuery.cs'),
       contents: renderGetMyQuery(ns),
     },
     {
-      relativePath: feature('GetMy', 'GetMyNotificationsQueryHandler.cs'),
+      relativePath: feature('Queries', 'GetMy', 'GetMyNotificationsQueryHandler.cs'),
       contents: renderGetMyHandler(ns),
     },
     {
-      relativePath: feature('GetUnreadCount', 'GetUnreadCountQuery.cs'),
+      relativePath: feature('Queries', 'GetUnreadCount', 'GetUnreadCountQuery.cs'),
       contents: renderUnreadCountQuery(ns),
     },
     {
-      relativePath: feature('GetUnreadCount', 'GetUnreadCountQueryHandler.cs'),
+      relativePath: feature('Queries', 'GetUnreadCount', 'GetUnreadCountQueryHandler.cs'),
       contents: renderUnreadCountHandler(ns),
     },
     {
-      relativePath: feature('MarkAsRead', 'MarkAsReadCommand.cs'),
+      relativePath: feature('Commands', 'MarkAsRead', 'MarkAsReadCommand.cs'),
       contents: renderMarkAsReadCommand(ns),
     },
     {
-      relativePath: feature('MarkAsRead', 'MarkAsReadCommandHandler.cs'),
+      relativePath: feature('Commands', 'MarkAsRead', 'MarkAsReadCommandHandler.cs'),
       contents: renderMarkAsReadHandler(ns),
     },
     {
-      relativePath: feature('MarkAllAsRead', 'MarkAllAsReadCommand.cs'),
+      relativePath: feature('Commands', 'MarkAllAsRead', 'MarkAllAsReadCommand.cs'),
       contents: renderMarkAllAsReadCommand(ns),
     },
     {
-      relativePath: feature('MarkAllAsRead', 'MarkAllAsReadCommandHandler.cs'),
+      relativePath: feature('Commands', 'MarkAllAsRead', 'MarkAllAsReadCommandHandler.cs'),
       contents: renderMarkAllAsReadHandler(ns),
     },
     {
-      relativePath: feature('Send', 'SendNotificationToUserCommand.cs'),
+      relativePath: feature('Commands', 'Send', 'SendNotificationToUserCommand.cs'),
       contents: renderSendCommand(ns),
     },
     {
-      relativePath: feature('Send', 'SendNotificationToUserCommandHandler.cs'),
+      relativePath: feature('Commands', 'Send', 'SendNotificationToUserCommandHandler.cs'),
       contents: renderSendHandler(ns),
     },
     {
-      relativePath: feature('Send', 'SendNotificationToUserCommandValidator.cs'),
+      relativePath: feature('Commands', 'Send', 'SendNotificationToUserCommandValidator.cs'),
       contents: renderSendValidator(ns),
     },
-    { relativePath: paths.api('Routing', 'Router.Notifications.g.cs'), contents: renderRouter(ns) },
     {
-      relativePath: paths.api('Controllers', 'NotificationsController.cs'),
+      relativePath: paths.api('Endpoints', 'NotificationsEndpoints.cs'),
       contents: renderController(ns),
     },
   );
@@ -360,7 +370,7 @@ public sealed class NotificationService : INotificationService
  * @param {string} ns
  */
 function renderNotificationDto(ns) {
-  return `namespace ${ns}.Application.Features.Notifications.Common;
+  return `namespace ${ns}.Application.Features.Notifications.DTOs;
 
 public sealed record NotificationDto
 {
@@ -388,8 +398,9 @@ public sealed record NotificationDto
  */
 function renderNotificationMappings(ns) {
   return `using ${ns}.Domain.Entities;
+using ${ns}.Application.Features.Notifications.DTOs;
 
-namespace ${ns}.Application.Features.Notifications.Common;
+namespace ${ns}.Application.Features.Notifications.Mapping;
 
 public static class NotificationMappings
 {
@@ -418,9 +429,9 @@ function renderGetMyQuery(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Notifications.Common;
+using ${ns}.Application.Features.Notifications.DTOs;
 
-namespace ${ns}.Application.Features.Notifications.GetMy;
+namespace ${ns}.Application.Features.Notifications.Queries.GetMy;
 
 /// <summary>
 /// Returns the current user's notifications. The user id is resolved from
@@ -444,10 +455,11 @@ using ${ns}.Application.Abstractions;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Notifications.Common;
+using ${ns}.Application.Features.Notifications.DTOs;
+using ${ns}.Application.Features.Notifications.Mapping;
 using ${ns}.Domain.Entities;
 
-namespace ${ns}.Application.Features.Notifications.GetMy;
+namespace ${ns}.Application.Features.Notifications.Queries.GetMy;
 
 public sealed class GetMyNotificationsQueryHandler
     : IRequestHandler<GetMyNotificationsQuery, Result<PaginationResult<NotificationDto>>>
@@ -514,7 +526,7 @@ function renderUnreadCountQuery(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.Notifications.GetUnreadCount;
+namespace ${ns}.Application.Features.Notifications.Queries.GetUnreadCount;
 
 public sealed record GetUnreadCountQuery : IRequest<Result<int>>;
 `;
@@ -530,7 +542,7 @@ using ${ns}.Application.Abstractions;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.Notifications.GetUnreadCount;
+namespace ${ns}.Application.Features.Notifications.Queries.GetUnreadCount;
 
 public sealed class GetUnreadCountQueryHandler
     : IRequestHandler<GetUnreadCountQuery, Result<int>>
@@ -578,7 +590,7 @@ function renderMarkAsReadCommand(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.Notifications.MarkAsRead;
+namespace ${ns}.Application.Features.Notifications.Commands.MarkAsRead;
 
 public sealed record MarkAsReadCommand(Guid Id) : IRequest<Result>;
 `;
@@ -594,7 +606,7 @@ using ${ns}.Application.Abstractions;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.Notifications.MarkAsRead;
+namespace ${ns}.Application.Features.Notifications.Commands.MarkAsRead;
 
 public sealed class MarkAsReadCommandHandler
     : IRequestHandler<MarkAsReadCommand, Result>
@@ -657,7 +669,7 @@ function renderMarkAllAsReadCommand(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.Notifications.MarkAllAsRead;
+namespace ${ns}.Application.Features.Notifications.Commands.MarkAllAsRead;
 
 public sealed record MarkAllAsReadCommand : IRequest<Result<int>>;
 `;
@@ -673,7 +685,7 @@ using ${ns}.Application.Abstractions;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.Notifications.MarkAllAsRead;
+namespace ${ns}.Application.Features.Notifications.Commands.MarkAllAsRead;
 
 public sealed class MarkAllAsReadCommandHandler
     : IRequestHandler<MarkAllAsReadCommand, Result<int>>
@@ -732,7 +744,7 @@ function renderSendCommand(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.Notifications.Send;
+namespace ${ns}.Application.Features.Notifications.Commands.Send;
 
 /// <summary>
 /// Admin-only: sends a notification to an arbitrary user. Requires the
@@ -761,7 +773,7 @@ function renderSendHandler(ns) {
 using ${ns}.Application.Abstractions.Notifications;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.Notifications.Send;
+namespace ${ns}.Application.Features.Notifications.Commands.Send;
 
 public sealed class SendNotificationToUserCommandHandler
     : IRequestHandler<SendNotificationToUserCommand, Result>
@@ -798,7 +810,7 @@ public sealed class SendNotificationToUserCommandHandler
 function renderSendValidator(ns) {
   return `using FluentValidation;
 
-namespace ${ns}.Application.Features.Notifications.Send;
+namespace ${ns}.Application.Features.Notifications.Commands.Send;
 
 public sealed class SendNotificationToUserCommandValidator
     : AbstractValidator<SendNotificationToUserCommand>
@@ -857,21 +869,21 @@ function renderController(ns) {
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ${ns}.Application.Common.Authorization;
-using ${ns}.API.Routing;
-using ${ns}.Application.Features.Notifications.GetMy;
-using ${ns}.Application.Features.Notifications.GetUnreadCount;
-using ${ns}.Application.Features.Notifications.MarkAllAsRead;
-using ${ns}.Application.Features.Notifications.MarkAsRead;
-using ${ns}.Application.Features.Notifications.Send;
+using ${ns}.API.Contracts;
+using ${ns}.Application.Features.Notifications.Queries.GetMy;
+using ${ns}.Application.Features.Notifications.Queries.GetUnreadCount;
+using ${ns}.Application.Features.Notifications.Commands.MarkAllAsRead;
+using ${ns}.Application.Features.Notifications.Commands.MarkAsRead;
+using ${ns}.Application.Features.Notifications.Commands.Send;
 
-namespace ${ns}.API.Controllers;
+namespace ${ns}.API.Endpoints;
 
 [Authorize]
-public sealed class NotificationsController : ApiControllerBase
+public sealed class NotificationsEndpoints : ApiControllerBase
 {
     private readonly ISender _sender;
 
-    public NotificationsController(ISender sender)
+    public NotificationsEndpoints(ISender sender)
     {
         _sender = sender;
     }

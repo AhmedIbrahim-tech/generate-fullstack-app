@@ -1,5 +1,6 @@
 import { groupFields } from '../fields/field-mappers.js';
 import { dapperReadRepositoryName, usesDapper } from './architecture.js';
+import { entityClrName } from './clean-architecture.js';
 import {
   mappingCtorAssign,
   mappingCtorParam,
@@ -20,9 +21,10 @@ export function renderDapperSearchHandler(config) {
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 
-namespace ${ns}.Application.Features.${pluralName}.Search;
+namespace ${ns}.Application.Features.${singularName}.Queries.Search;
 
 public sealed class Search${pluralName}QueryHandler
     : IRequestHandler<Search${pluralName}Query, Result<PaginationResult<${singularName}Dto>>>
@@ -61,9 +63,10 @@ export function renderDapperGetByIdHandler(config) {
   return `${mappingUsing(config)}using MediatR;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 
-namespace ${ns}.Application.Features.${pluralName}.GetById;
+namespace ${ns}.Application.Features.${singularName}.Queries.GetById;
 
 public sealed class Get${singularName}ByIdQueryHandler
     : IRequestHandler<Get${singularName}ByIdQuery, Result<${singularName}Dto>>
@@ -117,10 +120,11 @@ export function renderDapperCreateHandler(config) {
   return `${mappingUsing(config)}using MediatR;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 using ${ns}.Domain.Entities;
 
-namespace ${ns}.Application.Features.${pluralName}.Create;
+namespace ${ns}.Application.Features.${singularName}.Commands.Create;
 
 public sealed class Create${singularName}CommandHandler
     : IRequestHandler<Create${singularName}Command, Result<${singularName}Dto>>
@@ -136,7 +140,7 @@ public sealed class Create${singularName}CommandHandler
         Create${singularName}Command request,
         CancellationToken cancellationToken)
     {
-        var entity = new ${singularName}
+        var entity = new ${entityClrName(config)}
         {
 ${initializerLines.join('\n')}
         };
@@ -171,9 +175,10 @@ export function renderDapperUpdateHandler(config) {
   return `${mappingUsing(config)}using MediatR;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 
-namespace ${ns}.Application.Features.${pluralName}.Update;
+namespace ${ns}.Application.Features.${singularName}.Commands.Update;
 
 public sealed class Update${singularName}CommandHandler
     : IRequestHandler<Update${singularName}Command, Result<${singularName}Dto>>
@@ -218,7 +223,7 @@ export function renderDapperDeleteHandler(config) {
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.${pluralName}.Delete;
+namespace ${ns}.Application.Features.${singularName}.Commands.Delete;
 
 public sealed class Delete${singularName}CommandHandler
     : IRequestHandler<Delete${singularName}Command, Result>
@@ -260,9 +265,10 @@ export function renderDapperRestoreHandler(config) {
   return `${mappingUsing(config)}using MediatR;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 
-namespace ${ns}.Application.Features.${pluralName}.Restore;
+namespace ${ns}.Application.Features.${singularName}.Commands.Restore;
 
 public sealed class Restore${singularName}CommandHandler
     : IRequestHandler<Restore${singularName}Command, Result<${singularName}Dto>>
@@ -301,7 +307,7 @@ public sealed class Restore${singularName}CommandHandler
  * @param {string} display
  */
 export function renderDapperLookupHandler(config, display) {
-  const { pluralName } = config.feature;
+  const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
   void display;
 
@@ -310,7 +316,7 @@ using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.${pluralName}.Lookup;
+namespace ${ns}.Application.Features.${singularName}.Queries.Lookup;
 
 public sealed class Lookup${pluralName}QueryHandler
     : IRequestHandler<Lookup${pluralName}Query, Result<IReadOnlyList<LookupItemDto>>>

@@ -1,5 +1,6 @@
 import { isAutoMapper } from '../feature-profile.js';
 import { groupFields } from '../fields/field-mappers.js';
+import { entityClrName } from './clean-architecture.js';
 
 /**
  * @param {object} config
@@ -91,6 +92,7 @@ export function renderAutoMapperProfile(config) {
   const usings = [
     'using AutoMapper;',
     `using ${ns}.Domain.Entities;`,
+    `using ${ns}.Application.Features.${singularName}.DTOs;`,
   ];
   if (groups.toMany.length > 0) {
     usings.push(`using ${ns}.Application.Common.Models;`);
@@ -98,13 +100,13 @@ export function renderAutoMapperProfile(config) {
 
   return `${usings.join('\n')}
 
-namespace ${ns}.Application.Features.${pluralName}.Common;
+namespace ${ns}.Application.Features.${singularName}.Mapping;
 
 public sealed class ${singularName}MappingProfile : Profile
 {
     public ${singularName}MappingProfile()
     {
-        CreateMap<${singularName}, ${singularName}Dto>()
+        CreateMap<${entityClrName(config)}, ${singularName}Dto>()
 ${members.join('\n')};
     }
 }

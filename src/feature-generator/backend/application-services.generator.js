@@ -1,4 +1,4 @@
-import { getBackendFilePath } from '../../utils/project-paths.js';
+import { applicationFeatureBase, applicationDiPath, upsertApplicationServiceRegistration } from './clean-architecture.js';
 import { canBeLookupTarget, lookupDisplayMember, renderLookupHandler } from './lookup.generator.js';
 import {
   collectUsings,
@@ -26,8 +26,7 @@ import {
  */
 export function planServiceApplicationFiles(config) {
   const { pluralName } = config.feature;
-  const base = (...segments) =>
-    getBackendFilePath(config, 'Application', 'Features', pluralName, ...segments);
+  const base = (...segments) => applicationFeatureBase(config, ...segments);
 
   const cqrsFiles = planApplicationFiles(config);
   const withoutHandlers = cqrsFiles
@@ -42,11 +41,11 @@ export function planServiceApplicationFiles(config) {
   return [
     ...withoutHandlers,
     {
-      relativePath: base('Services', `I${pluralName}Service.cs`),
+      relativePath: base('Interfaces', `I${pluralName}Service.cs`),
       contents: renderServiceInterface(config),
     },
     {
-      relativePath: base('Services', `${pluralName}Service.cs`),
+      relativePath: base(`${pluralName}Service.cs`),
       contents: renderServiceImplementation(config),
     },
   ];
@@ -57,17 +56,11 @@ export function planServiceApplicationFiles(config) {
  * @param {object} config
  */
 export function planApplicationServiceRegistry(config) {
-  const { pluralName } = config.feature;
-  const ns = config.projectName;
-  const relativePath = getBackendFilePath(
-    config,
-    'Application',
-    'DependencyInjection.Generated.g.cs',
-  );
-
+  const { pluralName, singularName } = config.feature;
   return {
-    relativePath,
-    update: (existing) => upsertServiceRegistration(existing, ns, pluralName),
+    relativePath: applicationDiPath(config),
+    update: (existing) =>
+      upsertApplicationServiceRegistration(existing, config.projectName, singularName, pluralName),
   };
 }
 
@@ -118,27 +111,27 @@ function renderServiceInterface(config) {
 
   const usings = [
     `using ${ns}.Application.Common.Results;`,
-    `using ${ns}.Application.Features.${pluralName}.Common;`,
+    `using ${ns}.Application.Features.${singularName}.DTOs;`,
   ];
   if (ops.search) {
     usings.push(`using ${ns}.Application.Common.Models;`);
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Search;`);
+    usings.push(`using ${ns}.Application.Features.${singularName}.Queries.Search;`);
   }
   if (canBeLookupTarget(config)) {
     usings.push(`using ${ns}.Application.Common.Models;`);
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Lookup;`);
+    usings.push(`using ${ns}.Application.Features.${singularName}.Queries.Lookup;`);
   }
-  if (ops.getById) usings.push(`using ${ns}.Application.Features.${pluralName}.GetById;`);
-  if (ops.create) usings.push(`using ${ns}.Application.Features.${pluralName}.Create;`);
-  if (ops.update) usings.push(`using ${ns}.Application.Features.${pluralName}.Update;`);
-  if (ops.delete) usings.push(`using ${ns}.Application.Features.${pluralName}.Delete;`);
-  if (ops.restore) usings.push(`using ${ns}.Application.Features.${pluralName}.Restore;`);
+  if (ops.getById) usings.push(`using ${ns}.Application.Features.${singularName}.Queries.GetById;`);
+  if (ops.create) usings.push(`using ${ns}.Application.Features.${singularName}.Commands.Create;`);
+  if (ops.update) usings.push(`using ${ns}.Application.Features.${singularName}.Commands.Update;`);
+  if (ops.delete) usings.push(`using ${ns}.Application.Features.${singularName}.Commands.Delete;`);
+  if (ops.restore) usings.push(`using ${ns}.Application.Features.${singularName}.Commands.Restore;`);
 
   const uniqueUsings = [...new Set(usings)].join('\n');
 
   return `${uniqueUsings}
 
-namespace ${ns}.Application.Features.${pluralName}.Services;
+namespace ${ns}.Application.Features.${singularName}.Interfaces;
 
 public interface I${pluralName}Service
 {
@@ -151,7 +144,7 @@ ${methods.join('\n')}
  * @param {object} config
  */
 function renderServiceImplementation(config) {
-  const { pluralName } = config.feature;
+  const { pluralName, singularName } = config.feature;
   const ns = config.projectName;
   const ops = config.operations;
 
@@ -203,18 +196,20 @@ function renderServiceImplementation(config) {
     `using ${ns}.Application.Common.Exceptions;`,
     `using ${ns}.Application.Abstractions.Persistence;`,
     `using ${ns}.Application.Common.Results;`,
-    `using ${ns}.Application.Features.${pluralName}.Common;`,
+    `using ${ns}.Application.Features.${singularName}.DTOs;`,
+    `using ${ns}.Application.Features.${singularName}.Interfaces;`,
+    `using ${ns}.Application.Features.${singularName}.Mapping;`,
   ];
   if (isAutoMapper(config)) {
     extraUsings.push('using AutoMapper;');
   }
-  if (ops.search) extraUsings.push(`using ${ns}.Application.Features.${pluralName}.Search;`);
-  if (canBeLookupTarget(config)) extraUsings.push(`using ${ns}.Application.Features.${pluralName}.Lookup;`);
-  if (ops.getById) extraUsings.push(`using ${ns}.Application.Features.${pluralName}.GetById;`);
-  if (ops.create) extraUsings.push(`using ${ns}.Application.Features.${pluralName}.Create;`);
-  if (ops.update) extraUsings.push(`using ${ns}.Application.Features.${pluralName}.Update;`);
-  if (ops.delete) extraUsings.push(`using ${ns}.Application.Features.${pluralName}.Delete;`);
-  if (ops.restore) extraUsings.push(`using ${ns}.Application.Features.${pluralName}.Restore;`);
+  if (ops.search) extraUsings.push(`using ${ns}.Application.Features.${singularName}.Queries.Search;`);
+  if (canBeLookupTarget(config)) extraUsings.push(`using ${ns}.Application.Features.${singularName}.Queries.Lookup;`);
+  if (ops.getById) extraUsings.push(`using ${ns}.Application.Features.${singularName}.Queries.GetById;`);
+  if (ops.create) extraUsings.push(`using ${ns}.Application.Features.${singularName}.Commands.Create;`);
+  if (ops.update) extraUsings.push(`using ${ns}.Application.Features.${singularName}.Commands.Update;`);
+  if (ops.delete) extraUsings.push(`using ${ns}.Application.Features.${singularName}.Commands.Delete;`);
+  if (ops.restore) extraUsings.push(`using ${ns}.Application.Features.${singularName}.Commands.Restore;`);
 
   const usingBlock = collectUsings(...handlerSources, extraUsings.join('\n'));
   const persistLines = [];
@@ -240,7 +235,7 @@ function renderServiceImplementation(config) {
 
   return `${usingBlock}
 
-namespace ${ns}.Application.Features.${pluralName}.Services;
+namespace ${ns}.Application.Features.${singularName};
 
 public sealed class ${pluralName}Service : I${pluralName}Service
 {
@@ -304,51 +299,8 @@ function wrapValidatedMethod(method, parameterName) {
  * @param {string} existing
  * @param {string} ns
  * @param {string} pluralName
+ * @param {string} [featureName]
  */
-export function upsertServiceRegistration(existing, ns, pluralName) {
-  const usingLine = `using ${ns}.Application.Features.${pluralName}.Services;`;
-  const registration = `        services.AddScoped<I${pluralName}Service, ${pluralName}Service>();`;
-  const header = `// AUTO-GENERATED BY create-fullstack-feature
-// DO NOT EDIT MANUALLY`;
-
-  let content = existing?.trim()
-    ? existing
-    : `${header}
-
-using Microsoft.Extensions.DependencyInjection;
-
-namespace ${ns}.Application;
-
-public static partial class DependencyInjection
-{
-    static partial void RegisterGeneratedApplicationServices(IServiceCollection services)
-    {
-        // Feature generator appends service registrations here.
-    }
-}
-`;
-
-  if (!content.includes(usingLine)) {
-    content = content.replace(
-      'using Microsoft.Extensions.DependencyInjection;',
-      `using Microsoft.Extensions.DependencyInjection;\n${usingLine}`,
-    );
-  }
-
-  if (content.includes(registration.trim())) {
-    return content.endsWith('\n') ? content : `${content}\n`;
-  }
-
-  const placeholder = '        // Feature generator appends service registrations here.';
-  if (content.includes(placeholder)) {
-    content = content.replace(placeholder, registration);
-    return content.endsWith('\n') ? content : `${content}\n`;
-  }
-
-  content = content.replace(
-    /static partial void RegisterGeneratedApplicationServices\(IServiceCollection services\)\s*\{/,
-    `static partial void RegisterGeneratedApplicationServices(IServiceCollection services)\n    {\n${registration}`,
-  );
-
-  return content.endsWith('\n') ? content : `${content}\n`;
+export function upsertServiceRegistration(existing, ns, pluralName, featureName = pluralName) {
+  return upsertApplicationServiceRegistration(existing, ns, featureName, pluralName);
 }

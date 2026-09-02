@@ -21,7 +21,7 @@ import { pathExists, writeFile, ensureDir } from '../utils/filesystem.js';
 import { runCommand } from '../utils/command.js';
 import { add as installNpmPackages } from '../utils/package-manager.js';
 import { logger } from '../utils/logger.js';
-import { planAuthBackend, getAuthAppsettingsPatch, AUTH_BACKEND_ORCHESTRATION_NOTES, authBackendConflictPaths } from './auth/auth-backend.generator.js';
+import { planAuthBackend, planAuthRegistryUpdates, getAuthAppsettingsPatch, AUTH_BACKEND_ORCHESTRATION_NOTES, authBackendConflictPaths } from './auth/auth-backend.generator.js';
 import { assertBackendCompatibility } from '../models/backend.js';
 import { planAuthFrontend } from './auth/auth-frontend.generator.js';
 import { patchProgramForAuth } from './auth/auth-program-patch.js';
@@ -34,6 +34,8 @@ import { planRichTextModule } from './rich-text/rich-text.generator.js';
 import { planDashboardModule } from './dashboard/dashboard.generator.js';
 import { finalizePlan, setModuleManifestContext } from './modules-orchestrator-helpers.js';
 import { getBackendDirectory, getFrontendDirectory } from '../utils/project-paths.js';
+import { upsertUsing } from '../utils/csharp-source.js';
+import { upsertInfrastructureRegistration } from '../feature-generator/backend/clean-architecture.js';
 
 const MIGRATION_NAMES = {
   auth: 'AddAuthentication',
@@ -267,7 +269,10 @@ function planAuthCombined(config) {
     id: 'auth',
     requires: [],
     files: [...backendFiles, ...(frontend.files ?? [])],
-    registryUpdates: frontend.registryUpdates ?? [],
+    registryUpdates: [
+      ...planAuthRegistryUpdates(config),
+      ...(frontend.registryUpdates ?? []),
+    ],
     registrations: [],
     packages: {
       backend: MODULES.auth.packages?.backend ?? [],
@@ -358,18 +363,18 @@ async function patchIdentityDbContext(projectRoot, projectName, manifest) {
     return;
   }
 
-  if (!contents.includes(`using ${projectName}.Infrastructure.Authentication;`)) {
+  if (!contents.includes(`using ${projectName}.Infrastructure.Identity;`)) {
     contents = contents.replace(
       /(using .+;\r?\n)(?!using)/,
-      `$1using ${projectName}.Infrastructure.Authentication;\nusing Microsoft.AspNetCore.Identity.EntityFrameworkCore;\n`,
+      `$1using ${projectName}.Infrastructure.Identity;\nusing Microsoft.AspNetCore.Identity.EntityFrameworkCore;\n`,
     );
   } else if (!contents.includes('Microsoft.AspNetCore.Identity.EntityFrameworkCore')) {
     contents = `using Microsoft.AspNetCore.Identity.EntityFrameworkCore;\n${contents}`;
   }
 
   contents = contents.replace(
-    /public partial class ApplicationDbContext\s*:\s*DbContext\s*,\s*IApplicationDbContext/,
-    'public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>, IApplicationDbContext',
+    /public (?:partial )?class ApplicationDbContext\s*:\s*DbContext\s*,\s*IApplicationDbContext/,
+    'public class ApplicationDbContext : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>, IApplicationDbContext',
   );
 
   await writeFile(dbContextPath, contents);
@@ -577,14 +582,14 @@ async function syncInfrastructureRegistrations(projectRoot, projectName, registr
   const target = path.join(
     backendDir,
     'Infrastructure',
-    'DependencyInjection.Generated.g.cs',
+    'DependencyInjection',
+    'InfrastructureServiceExtensions.cs',
   );
 
-  // Remove legacy Modules.g.cs if present (conflicts with Generated partial).
-  const legacy = path.join(backendDir, 'Infrastructure', 'DependencyInjection.Modules.g.cs');
-  if (await pathExists(legacy)) {
-    await fs.unlink(legacy);
-  }
+  const legacyFiles = [
+    path.join(backendDir, 'Infrastructure', 'DependencyInjection.Generated.g.cs'),
+    path.join(backendDir, 'Infrastructure', 'DependencyInjection.Modules.g.cs'),
+  ];
 
   /** @type {{ method: string, namespace: string }[]} */
   const unique = [];
@@ -607,45 +612,46 @@ async function syncInfrastructureRegistrations(projectRoot, projectName, registr
     }
   }
 
+  for (const legacy of legacyFiles) {
+    if (!(await pathExists(legacy))) {
+      continue;
+    }
+    const legacyContents = await fs.readFile(legacy, 'utf8');
+    const methodMatches = [...legacyContents.matchAll(/services\.(Add\w+Module)\s*\(/g)].map(
+      (m) => m[1],
+    );
+    for (const method of methodMatches) {
+      if (seen.has(method)) continue;
+      seen.add(method);
+      const fromPlan = registrations.find((r) => r.method === method);
+      unique.push({
+        method,
+        namespace: fromPlan?.namespace ?? namespaceForModuleMethod(projectName, method),
+      });
+    }
+    await fs.unlink(legacy);
+  }
+
   for (const reg of registrations) {
     if (seen.has(reg.method)) continue;
     seen.add(reg.method);
     unique.push(reg);
   }
 
-  if (!unique.length && existing) {
+  if (!unique.length) {
     return;
   }
 
-  const usings = [
-    'using Microsoft.Extensions.Configuration;',
-    'using Microsoft.Extensions.DependencyInjection;',
-    ...unique.map((r) => `using ${r.namespace};`),
-  ]
-    .filter((u, i, arr) => arr.indexOf(u) === i)
-    .join('\n');
-  const calls =
-    unique.length > 0
-      ? unique.map((r) => `        services.${r.method}();`).join('\n')
-      : '        // Feature generator appends optional infrastructure registrations here.';
-
-  const contents = `// AUTO-GENERATED BY create-fullstack-module / create-fullstack-feature
-// DO NOT EDIT MANUALLY
-
-${usings}
-
-namespace ${projectName}.Infrastructure;
-
-public static partial class DependencyInjection
-{
-    static partial void RegisterGeneratedInfrastructure(
-        IServiceCollection services,
-        IConfiguration configuration)
-    {
-${calls}
-    }
-}
-`;
+  let contents = existing;
+  for (const reg of unique) {
+    contents = upsertUsing(contents, `using ${reg.namespace};`);
+    contents = upsertInfrastructureRegistration(
+      contents,
+      projectName,
+      [],
+      `        services.${reg.method}();`,
+    );
+  }
 
   await writeFile(target, contents);
 }
@@ -656,7 +662,7 @@ ${calls}
  */
 function namespaceForModuleMethod(projectName, method) {
   const modulePart = method.replace(/^Add/, '').replace(/Module$/, '');
-  return `${projectName}.Infrastructure.${modulePart}`;
+  return `${projectName}.Infrastructure.DependencyInjection`;
 }
 
 /**

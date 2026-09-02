@@ -2,6 +2,12 @@ import { getBackendFilePath } from '../../utils/project-paths.js';
 import { isDapperOnly, isServicesArchitecture } from './architecture.js';
 import { upsertServiceRegistration } from './application-services.generator.js';
 import { upsertInfrastructureRegistration } from './dapper-persistence.generator.js';
+import {
+  applicationDiPath,
+  infrastructureDiPath,
+  planDbSetUpdates,
+  planRouterUpdate,
+} from './clean-architecture.js';
 
 export const DEFAULT_MAX_UPLOAD_BYTES = 52428800; // 50 MB
 
@@ -29,15 +35,9 @@ export function planFileStorageInfrastructure(projectName, config = {}) {
   const files = [
     infra('Domain', ['Entities', 'StoredFile.cs'], renderStoredFileEntity(ns)),
     infra('Application', ['Abstractions', 'Storage', 'IFileStorageService.cs'], renderStorageAbstraction(ns)),
-    infra('Application', ['Features', 'Files', 'Common', 'StoredFileDto.cs'], renderStoredFileDto(ns)),
-    infra('Infrastructure', ['Storage', 'LocalFileStorageService.cs'], renderLocalStorageService(ns)),
-    infra('Infrastructure', ['Storage', 'FileStorageRegistration.cs'], renderStorageRegistration(ns)),
-    {
-      relativePath: getBackendFilePath(config, 'Infrastructure', 'DependencyInjection.Generated.g.cs'),
-      contents: renderGeneratedDi(ns, dapperOnly),
-      writeMode: 'replace',
-    },
-    infra('API', ['Routing', 'Router.Files.g.cs'], renderRouter(ns)),
+    infra('Application', ['Features', 'Files', 'DTOs', 'StoredFileDto.cs'], renderStoredFileDto(ns)),
+    infra('Infrastructure', ['Services', 'LocalFileStorageService.cs'], renderLocalStorageService(ns)),
+    infra('Infrastructure', ['Services', 'FileStorageRegistration.cs'], renderStorageRegistration(ns)),
   ];
 
   if (dapperOnly) {
@@ -47,23 +47,21 @@ export function planFileStorageInfrastructure(projectName, config = {}) {
     );
   } else {
     files.push(
-      infra('Application', ['Abstractions', 'Persistence', 'IApplicationDbContext.Files.g.cs'], renderDbContextInterface(ns)),
-      infra('Infrastructure', ['Persistence', 'ApplicationDbContext.Files.g.cs'], renderDbContextImplementation(ns)),
       infra('Infrastructure', ['Persistence', 'Configurations', 'StoredFileConfiguration.cs'], renderStoredFileConfiguration(ns)),
     );
   }
 
   if (servicesMode) {
     files.push(
-      infra('Application', ['Features', 'Files', 'Services', 'IFilesService.cs'], renderFilesServiceInterface(ns)),
-      infra('Application', ['Features', 'Files', 'Services', 'FilesService.cs'], renderFilesService(ns, dapperOnly)),
-      infra('API', ['Controllers', 'FilesController.cs'], renderFilesServiceController(ns)),
+      infra('Application', ['Features', 'Files', 'Interfaces', 'IFilesService.cs'], renderFilesServiceInterface(ns)),
+      infra('Application', ['Features', 'Files', 'FilesService.cs'], renderFilesService(ns, dapperOnly)),
+      infra('API', ['Endpoints', 'FilesEndpoints.cs'], renderFilesServiceController(ns)),
     );
   } else {
     files.push(
-      infra('Application', ['Features', 'Files', 'Upload', 'UploadFileCommand.cs'], renderUploadCommand(ns)),
-      infra('Application', ['Features', 'Files', 'Upload', 'UploadFileCommandHandler.cs'], renderUploadHandler(ns, dapperOnly)),
-      infra('API', ['Controllers', 'FilesController.cs'], renderFilesController(ns)),
+      infra('Application', ['Features', 'Files', 'Commands', 'Upload', 'UploadFileCommand.cs'], renderUploadCommand(ns)),
+      infra('Application', ['Features', 'Files', 'Commands', 'Upload', 'UploadFileCommandHandler.cs'], renderUploadHandler(ns, dapperOnly)),
+      infra('API', ['Endpoints', 'FilesEndpoints.cs'], renderFilesController(ns)),
     );
   }
 
@@ -76,18 +74,36 @@ export function planFileStorageInfrastructure(projectName, config = {}) {
 export function planFileStorageRegistry(config) {
   const ns = config.projectName;
   /** @type {{ relativePath: string, update: (existing: string) => string }[]} */
-  const updates = [];
+  const updates = [
+    planRouterUpdate(config, ns, 'Files', 'Files', [{ name: 'Upload' }]),
+  ];
+
+  if (!isDapperOnly(config.orm)) {
+    updates.push(...planDbSetUpdates(config, ns, 'StoredFile', 'StoredFiles'));
+  }
+
+  updates.push({
+    relativePath: infrastructureDiPath(config),
+    update: (existing) =>
+      upsertInfrastructureRegistration(
+        existing,
+        ns,
+        `using ${ns}.Infrastructure.Services;`,
+        '',
+        '        services.AddFileStorage();',
+      ),
+  });
 
   if (isServicesArchitecture(config.architecture)) {
     updates.push({
-      relativePath: getBackendFilePath(config, 'Application', 'DependencyInjection.Generated.g.cs'),
-      update: (existing) => upsertServiceRegistration(existing, ns, 'Files'),
+      relativePath: applicationDiPath(config),
+      update: (existing) => upsertServiceRegistration(existing, ns, 'Files', 'Files'),
     });
   }
 
   if (isDapperOnly(config.orm)) {
     updates.push({
-      relativePath: getBackendFilePath(config, 'Infrastructure', 'DependencyInjection.Generated.g.cs'),
+      relativePath: infrastructureDiPath(config),
       update: (existing) =>
         upsertInfrastructureRegistration(
           existing,
@@ -108,7 +124,7 @@ export function planFileStorageRegistry(config) {
 function renderStoredFileEntity(ns) {
   return `namespace ${ns}.Domain.Entities;
 
-public sealed partial class StoredFile : Common.BaseEntity
+public sealed class StoredFile : Common.BaseEntity
 {
     public string FileName { get; set; } = string.Empty;
 
@@ -164,7 +180,7 @@ public partial interface IApplicationDbContext
  * @param {string} ns
  */
 function renderStoredFileDto(ns) {
-  return `namespace ${ns}.Application.Features.Files.Common;
+  return `namespace ${ns}.Application.Features.Files.DTOs;
 
 public sealed record StoredFileDto
 {
@@ -185,9 +201,9 @@ public sealed record StoredFileDto
 function renderUploadCommand(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Files.Common;
+using ${ns}.Application.Features.Files.DTOs;
 
-namespace ${ns}.Application.Features.Files.Upload;
+namespace ${ns}.Application.Features.Files.Commands.Upload;
 
 public sealed record UploadFileCommand(
     Stream Content,
@@ -206,10 +222,10 @@ function renderUploadHandler(ns, dapperOnly = false) {
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Abstractions.Storage;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Files.Common;
+using ${ns}.Application.Features.Files.DTOs;
 using ${ns}.Domain.Entities;
 
-namespace ${ns}.Application.Features.Files.Upload;
+namespace ${ns}.Application.Features.Files.Commands.Upload;
 
 public sealed class UploadFileCommandHandler
     : IRequestHandler<UploadFileCommand, Result<StoredFileDto>>
@@ -263,10 +279,10 @@ public sealed class UploadFileCommandHandler
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Abstractions.Storage;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Files.Common;
+using ${ns}.Application.Features.Files.DTOs;
 using ${ns}.Domain.Entities;
 
-namespace ${ns}.Application.Features.Files.Upload;
+namespace ${ns}.Application.Features.Files.Commands.Upload;
 
 public sealed class UploadFileCommandHandler
     : IRequestHandler<UploadFileCommand, Result<StoredFileDto>>
@@ -323,7 +339,7 @@ public sealed class UploadFileCommandHandler
 function renderLocalStorageService(ns) {
   return `using ${ns}.Application.Abstractions.Storage;
 
-namespace ${ns}.Infrastructure.Storage;
+namespace ${ns}.Infrastructure.Services;
 
 public sealed class LocalFileStorageService : IFileStorageService
 {
@@ -383,7 +399,7 @@ function renderStorageRegistration(ns) {
   return `using Microsoft.Extensions.DependencyInjection;
 using ${ns}.Application.Abstractions.Storage;
 
-namespace ${ns}.Infrastructure.Storage;
+namespace ${ns}.Infrastructure.Services;
 
 public static class FileStorageRegistration
 {
@@ -502,16 +518,16 @@ function renderFilesController(ns) {
   return `using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using ${ns}.API.Routing;
-using ${ns}.Application.Features.Files.Upload;
+using ${ns}.API.Contracts;
+using ${ns}.Application.Features.Files.Commands.Upload;
 
-namespace ${ns}.API.Controllers;
+namespace ${ns}.API.Endpoints;
 
-public sealed class FilesController : ApiControllerBase
+public sealed class FilesEndpoints : ApiControllerBase
 {
     private readonly ISender _sender;
 
-    public FilesController(ISender sender)
+    public FilesEndpoints(ISender sender)
     {
         _sender = sender;
     }
@@ -546,9 +562,9 @@ public sealed class FilesController : ApiControllerBase
  */
 function renderFilesServiceInterface(ns) {
   return `using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Files.Common;
+using ${ns}.Application.Features.Files.DTOs;
 
-namespace ${ns}.Application.Features.Files.Services;
+namespace ${ns}.Application.Features.Files.Interfaces;
 
 public interface IFilesService
 {
@@ -570,10 +586,11 @@ function renderFilesService(ns, dapperOnly = false) {
     return `using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Abstractions.Storage;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Files.Common;
+using ${ns}.Application.Features.Files.DTOs;
+using ${ns}.Application.Features.Files.Interfaces;
 using ${ns}.Domain.Entities;
 
-namespace ${ns}.Application.Features.Files.Services;
+namespace ${ns}.Application.Features.Files;
 
 public sealed class FilesService : IFilesService
 {
@@ -626,10 +643,11 @@ public sealed class FilesService : IFilesService
   return `using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Abstractions.Storage;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Files.Common;
+using ${ns}.Application.Features.Files.DTOs;
+using ${ns}.Application.Features.Files.Interfaces;
 using ${ns}.Domain.Entities;
 
-namespace ${ns}.Application.Features.Files.Services;
+namespace ${ns}.Application.Features.Files;
 
 public sealed class FilesService : IFilesService
 {
@@ -686,16 +704,16 @@ public sealed class FilesService : IFilesService
 function renderFilesServiceController(ns) {
   return `using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using ${ns}.API.Routing;
-using ${ns}.Application.Features.Files.Services;
+using ${ns}.API.Contracts;
+using ${ns}.Application.Features.Files.Interfaces;
 
-namespace ${ns}.API.Controllers;
+namespace ${ns}.API.Endpoints;
 
-public sealed class FilesController : ApiControllerBase
+public sealed class FilesEndpoints : ApiControllerBase
 {
     private readonly IFilesService _service;
 
-    public FilesController(IFilesService service)
+    public FilesEndpoints(IFilesService service)
     {
         _service = service;
     }

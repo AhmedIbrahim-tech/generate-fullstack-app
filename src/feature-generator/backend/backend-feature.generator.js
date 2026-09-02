@@ -1,13 +1,14 @@
 import { planDomainFiles } from './domain.generator.js';
-import { planPersistenceFiles } from './persistence.generator.js';
+import { planPersistenceFiles, planPersistenceRegistryUpdates } from './persistence.generator.js';
 import { planApplicationFiles } from './application.generator.js';
 import { planServiceApplicationFiles, planApplicationServiceRegistry } from './application-services.generator.js';
-import { planApiFiles } from './api.generator.js';
+import { planApiFiles, planApiRegistryUpdates } from './api.generator.js';
 import { planFileStorageInfrastructure, planFileStorageRegistry } from './file-storage.generator.js';
 import { hasMediaField } from '../fields/field-mappers.js';
 import { getBackendFilePath } from '../../utils/project-paths.js';
 import { isServicesArchitecture, usesDapper } from './architecture.js';
 import { planDapperRepositoryRegistry } from './dapper-persistence.generator.js';
+import { applicationFeatureName } from './clean-architecture.js';
 
 /**
  * @param {object} config
@@ -54,6 +55,9 @@ export function planBackendRegistryUpdates(config, context = {}) {
     updates.push(planDapperRepositoryRegistry(config));
   }
 
+  updates.push(...planPersistenceRegistryUpdates(config));
+  updates.push(...planApiRegistryUpdates(config));
+
   if (isServicesArchitecture(config.architecture)) {
     updates.push(planApplicationServiceRegistry(config));
   }
@@ -73,7 +77,7 @@ export function backendConflictPaths(config) {
   const { singularName, pluralName } = config.feature;
   return [
     getBackendFilePath(config, 'Domain', 'Entities', `${singularName}.cs`),
-    getBackendFilePath(config, 'Application', 'Features', pluralName),
-    getBackendFilePath(config, 'API', 'Controllers', `${pluralName}Controller.cs`),
+    getBackendFilePath(config, 'Application', 'Features', applicationFeatureName(config)),
+    getBackendFilePath(config, 'API', 'Endpoints', `${pluralName}Endpoints.cs`),
   ];
 }

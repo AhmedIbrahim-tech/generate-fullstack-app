@@ -17,6 +17,7 @@ import {
   resolveFrontendStrategy,
 } from './utils/manifest.js';
 import { getBackendDirectory, getFrontendDirectory } from '../utils/project-paths.js';
+import { setModuleManifestContext } from '../module-generator/modules-orchestrator-helpers.js';
 import { isDapperOnly } from './backend/architecture.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -33,6 +34,7 @@ export async function generateFeature(resolvedOptions) {
   }
 
   const manifest = await readManifest(projectRoot);
+  setModuleManifestContext(manifest);
   const projectName = manifest.projectName;
   if (!projectName) {
     throw new Error('Project manifest is missing projectName. Re-run generate-fullstack-app or set projectName in .fullstack-app.json.');

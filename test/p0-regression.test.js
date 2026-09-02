@@ -58,7 +58,7 @@ test('Application Services mode generates no MediatR or IRequest references', ()
     );
   }
   assert.ok(
-    files.some((file) => file.relativePath.replaceAll('\\', '/').endsWith('Services/IProductsService.cs')),
+    files.some((file) => file.relativePath.replaceAll('\\', '/').endsWith('Interfaces/IProductsService.cs')),
     'Expected IProductsService.cs',
   );
 });

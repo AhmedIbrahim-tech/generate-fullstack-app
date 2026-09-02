@@ -2,6 +2,7 @@ import { groupFields, hasMediaField } from '../fields/field-mappers.js';
 import { getBackendFilePath } from '../../utils/project-paths.js';
 import { isDapperOnly, usesDapper } from './architecture.js';
 import { planDapperPersistenceFiles } from './dapper-persistence.generator.js';
+import { planDbSetUpdates } from './clean-architecture.js';
 
 /**
  * @param {object} config
@@ -12,8 +13,7 @@ export function planPersistenceFiles(config) {
     return planDapperPersistenceFiles(config);
   }
 
-  const { singularName, pluralName } = config.feature;
-  const ns = config.projectName;
+  const { singularName } = config.feature;
 
   /** @type {{ relativePath: string, contents: string }[]} */
   const files = [
@@ -27,43 +27,6 @@ export function planPersistenceFiles(config) {
       ),
       contents: renderConfiguration(config),
     },
-    {
-      relativePath: getBackendFilePath(
-        config,
-        'Application',
-        'Abstractions',
-        'Persistence',
-        `IApplicationDbContext.${pluralName}.g.cs`,
-      ),
-      contents: `using Microsoft.EntityFrameworkCore;
-using ${ns}.Domain.Entities;
-
-namespace ${ns}.Application.Abstractions.Persistence;
-
-public partial interface IApplicationDbContext
-{
-    DbSet<${singularName}> ${pluralName} { get; }
-}
-`,
-    },
-    {
-      relativePath: getBackendFilePath(
-        config,
-        'Infrastructure',
-        'Persistence',
-        `ApplicationDbContext.${pluralName}.g.cs`,
-      ),
-      contents: `using Microsoft.EntityFrameworkCore;
-using ${ns}.Domain.Entities;
-
-namespace ${ns}.Infrastructure.Persistence;
-
-public partial class ApplicationDbContext
-{
-    public DbSet<${singularName}> ${pluralName} => Set<${singularName}>();
-}
-`,
-    },
   ];
 
   if (usesDapper(config.orm)) {
@@ -71,6 +34,23 @@ public partial class ApplicationDbContext
   }
 
   return files;
+}
+
+/**
+ * Upsert DbSet members into the canonical persistence abstractions.
+ * @param {object} config
+ */
+export function planPersistenceRegistryUpdates(config) {
+  if (isDapperOnly(config.orm)) {
+    return [];
+  }
+
+  return planDbSetUpdates(
+    config,
+    config.projectName,
+    config.feature.singularName,
+    config.feature.pluralName,
+  );
 }
 
 /**
@@ -145,7 +125,7 @@ using ${ns}.Domain.Entities;
 
 namespace ${ns}.Infrastructure.Persistence.Configurations;
 
-public sealed partial class ${singularName}Configuration : IEntityTypeConfiguration<${singularName}>
+public sealed class ${singularName}Configuration : IEntityTypeConfiguration<${singularName}>
 {
     public void Configure(EntityTypeBuilder<${singularName}> builder)
     {

@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using __PASCAL_NAME__.Application.Common.Exceptions;
 
-namespace __PASCAL_NAME__.API.ExceptionHandling;
+namespace __PASCAL_NAME__.API.Middleware;
 
 public sealed class GlobalExceptionHandler : IExceptionHandler
 {

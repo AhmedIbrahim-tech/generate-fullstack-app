@@ -1,9 +1,14 @@
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
 import { runCommand } from '../utils/command.js';
-import { copyTemplate, ensureDir, removeFilesMatching, templatesRoot, upsertCsprojProperties, writeFile } from '../utils/filesystem.js';
+import { copyTemplate, ensureDir, pathExists, removeFilesMatching, templatesRoot, upsertCsprojProperties, writeFile } from '../utils/filesystem.js';
 import { assertDotnetAvailable, detectTargetFramework } from '../utils/dotnet.js';
 import { logger } from '../utils/logger.js';
 import { assertBackendCompatibility, shouldGenerateIdentityArtifacts } from '../models/backend.js';
+import {
+  renderApplicationServiceExtensions,
+  renderApiServiceExtensions,
+} from '../feature-generator/backend/clean-architecture.js';
 
 const PROJECTS = [
   { folder: 'Domain', template: 'classlib', log: 'Domain created' },
@@ -230,6 +235,42 @@ function addPackages(cwd, csproj, packages) {
   }
 }
 
+async function removeObsoleteArchitectureFiles(backendDir) {
+  const obsolete = [
+    path.join('API', 'Routing', 'Router.cs'),
+    path.join('API', 'ExceptionHandling', 'GlobalExceptionHandler.cs'),
+    path.join('API', 'Controllers', 'ApiControllerBase.cs'),
+    path.join('API', 'Controllers', 'WeatherForecastController.cs'),
+    path.join('Application', 'DependencyInjection.cs'),
+    path.join('Infrastructure', 'DependencyInjection.cs'),
+    path.join('Infrastructure', 'DependencyInjection.Generated.g.cs'),
+    path.join('Infrastructure', 'DependencyInjection.Modules.g.cs'),
+  ];
+
+  for (const relative of obsolete) {
+    const absolute = path.join(backendDir, relative);
+    if (await pathExists(absolute)) {
+      await fs.unlink(absolute);
+    }
+  }
+
+  for (const relativeDir of [
+    path.join('API', 'Controllers'),
+    path.join('API', 'Routing'),
+    path.join('API', 'ExceptionHandling'),
+  ]) {
+    const absolute = path.join(backendDir, relativeDir);
+    try {
+      const entries = await fs.readdir(absolute);
+      if (entries.length === 0) {
+        await fs.rmdir(absolute);
+      }
+    } catch {
+      // Folder absent or not empty.
+    }
+  }
+}
+
 /**
  * @param {object} options
  * @param {object} config
@@ -254,6 +295,7 @@ async function overlayBackendTemplates(options, config, backendDir) {
   };
 
   await copyTemplate(path.join(templatesRoot(), 'backend'), backendDir, replacements);
+  await removeObsoleteArchitectureFiles(backendDir);
 
   if (config.architecture === 'services') {
     await removeFilesMatching(path.join(backendDir, 'Application', 'Behaviors'), () => true);
@@ -277,13 +319,9 @@ async function overlayBackendTemplates(options, config, backendDir) {
   // Write tailored appsettings.json
   await writeAppSettings(backendDir, pascalName, connectionString, config);
 
-  // Write tailored Infrastructure/DependencyInjection.cs
   await writeInfrastructureDi(backendDir, pascalName, config);
-
-  // Write tailored Application/DependencyInjection.cs
   await writeApplicationDi(backendDir, pascalName, config);
-
-  // Write tailored API/Program.cs
+  await writeApiDi(backendDir, pascalName, config);
   await writeProgramCs(backendDir, pascalName, config);
 
   // If Dapper is selected, write IDbConnectionFactory
@@ -447,27 +485,32 @@ export function renderInfrastructureDi(pascalName, config) {
 `;
   }
 
+  dbRegistration += `
+        RegisterFeatureInfrastructure(services, configuration);
+`;
+
   const distinctUsings = [...new Set(usings)].join('\n');
 
   return `${distinctUsings}
 
-namespace ${pascalName}.Infrastructure;
+namespace ${pascalName}.Infrastructure.DependencyInjection;
 
-public static partial class DependencyInjection
+public static class InfrastructureServiceExtensions
 {
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
         IConfiguration configuration)
     {
 ${dbRegistration}
-        RegisterGeneratedInfrastructure(services, configuration);
-
         return services;
     }
 
-    static partial void RegisterGeneratedInfrastructure(
+    static void RegisterFeatureInfrastructure(
         IServiceCollection services,
-        IConfiguration configuration);
+        IConfiguration configuration)
+    {
+        // Feature generator appends optional infrastructure registrations here.
+    }
 }
 `;
 }
@@ -478,7 +521,10 @@ ${dbRegistration}
  * @param {object} config
  */
 async function writeInfrastructureDi(targetDir, pascalName, config) {
-  await writeFile(path.join(targetDir, 'Infrastructure', 'DependencyInjection.cs'), renderInfrastructureDi(pascalName, config));
+  await writeFile(
+    path.join(targetDir, 'Infrastructure', 'DependencyInjection', 'InfrastructureServiceExtensions.cs'),
+    renderInfrastructureDi(pascalName, config),
+  );
 }
 
 /**
@@ -487,74 +533,30 @@ async function writeInfrastructureDi(targetDir, pascalName, config) {
  * @param {object} config
  */
 async function writeApplicationDi(targetDir, pascalName, config) {
-  const usings = ['using FluentValidation;', 'using Microsoft.Extensions.DependencyInjection;'];
-
-  let diBody = '        services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);\n';
-
-  if (config.architecture === 'cqrs-mediatr') {
-    usings.push('using MediatR;');
-    usings.push(`using ${pascalName}.Application.Behaviors;`);
-    diBody += `        services.AddMediatR(configuration =>
-        {
-            configuration.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly);
-            configuration.AddOpenBehavior(typeof(ValidationBehavior<,>));
-            configuration.AddOpenBehavior(typeof(LoggingBehavior<,>));
-        });\n`;
-  }
-
-  if (config.mapping === 'automapper') {
-    usings.push('using AutoMapper;');
-    diBody += '        services.AddAutoMapper(typeof(DependencyInjection).Assembly);\n';
-  }
-
-  if (config.architecture === 'services') {
-    diBody += '        RegisterGeneratedApplicationServices(services);\n';
-  }
-
-  const distinctUsings = [...new Set(usings)].join('\n');
-  const classKind = config.architecture === 'services' ? 'static partial class' : 'static class';
-  const partialHook = config.architecture === 'services'
-    ? `
-    static partial void RegisterGeneratedApplicationServices(IServiceCollection services);
-`
-    : '';
-
-  const content = `${distinctUsings}
-
-namespace ${pascalName}.Application;
-
-public ${classKind} DependencyInjection
-{
-    public static IServiceCollection AddApplication(this IServiceCollection services)
-    {
-${diBody}
-        return services;
-    }
-${partialHook}}
-`;
-
-  await writeFile(path.join(targetDir, 'Application', 'DependencyInjection.cs'), content);
-
-  if (config.architecture === 'services') {
-    await writeFile(
-      path.join(targetDir, 'Application', 'DependencyInjection.Generated.g.cs'),
-      `// AUTO-GENERATED BY create-fullstack-feature
-// DO NOT EDIT MANUALLY
-
-using Microsoft.Extensions.DependencyInjection;
-
-namespace ${pascalName}.Application;
-
-public static partial class DependencyInjection
-{
-    static partial void RegisterGeneratedApplicationServices(IServiceCollection services)
-    {
-        // Feature generator appends service registrations here.
-    }
+  const content = renderApplicationServiceExtensions(pascalName, {
+    servicesArchitecture: config.architecture === 'services',
+    mapping: config.mapping,
+  });
+  await writeFile(
+    path.join(targetDir, 'Application', 'DependencyInjection', 'ApplicationServiceExtensions.cs'),
+    content,
+  );
 }
-`,
-    );
+
+/**
+ * @param {string} targetDir
+ * @param {string} pascalName
+ * @param {object} config
+ */
+async function writeApiDi(targetDir, pascalName, config) {
+  let extra = '';
+  if (config.realtime === 'signalr') {
+    extra = '        services.AddSignalR();\n';
   }
+  await writeFile(
+    path.join(targetDir, 'API', 'DependencyInjection', 'ApiServiceExtensions.cs'),
+    renderApiServiceExtensions(pascalName, { extraRegistrations: extra }),
+  );
 }
 
 /**
@@ -564,9 +566,9 @@ public static partial class DependencyInjection
  */
 async function writeProgramCs(targetDir, pascalName, config) {
   const usings = [
-    `using ${pascalName}.API.ExceptionHandling;`,
-    `using ${pascalName}.Application;`,
-    `using ${pascalName}.Infrastructure;`,
+    `using ${pascalName}.API.DependencyInjection;`,
+    `using ${pascalName}.Application.DependencyInjection;`,
+    `using ${pascalName}.Infrastructure.DependencyInjection;`,
   ];
 
   if (config.logging === 'serilog') {
@@ -589,10 +591,8 @@ builder.Host.UseSerilog((context, services, configuration) =>
     serilogMiddleware = 'app.UseSerilogRequestLogging();\n';
   }
 
-  let signalrService = '';
   let signalrEndpoint = '';
   if (config.realtime === 'signalr') {
-    signalrService = 'builder.Services.AddSignalR();\n';
     signalrEndpoint = `app.MapHub<${pascalName}.API.Hubs.AppHub>("/hubs/app");\n`;
   }
 
@@ -610,26 +610,7 @@ var builder = WebApplication.CreateBuilder(args);
 ${serilogBuilder}
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddControllers();
-builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
-builder.Services.AddProblemDetails();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-builder.Services.AddHealthChecks();
-${signalrService}
-var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-    ?? ["http://localhost:3000", "http://localhost:5173", "http://localhost:4200"];
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("Client", policy =>
-    {
-        policy
-            .WithOrigins(allowedOrigins)
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
-    });
-});
+builder.Services.AddApiServices(builder.Configuration);
 
 var app = builder.Build();
 

@@ -6,7 +6,7 @@
  * guarded so running it twice (or against an already-patched file) is a no-op.
  *
  * It applies four changes when missing:
- *   1. `using <ProjectName>.Infrastructure.Authentication;`
+ *   1. `using <ProjectName>.Infrastructure.DependencyInjection;` (AddAuthModule)
  *   2. `builder.Services.AddAuthModule(builder.Configuration);`
  *   3. `app.UseAuthentication(); app.UseAuthorization();` before `MapControllers`
  *   4. `await app.Services.SeedAuthModuleAsync();` before `app.Run();`
@@ -56,8 +56,8 @@ export function patchProgramForAuth(existingProgramCs) {
 }
 
 /**
- * Add `using <ProjectName>.Infrastructure.Authentication;` next to the existing
- * Infrastructure using, deriving the namespace from whatever is already there.
+ * Ensure AddAuthModule is in scope. Generated Program.cs already imports
+ * Infrastructure.DependencyInjection (same namespace as AuthenticationServiceExtensions).
  *
  * @param {string} contents
  * @param {string[]} applied
@@ -65,23 +65,32 @@ export function patchProgramForAuth(existingProgramCs) {
  * @returns {string}
  */
 function insertUsing(contents, applied, skipped) {
-  const authUsingRegex = /using\s+[\w.]+\.Infrastructure\.Authentication\s*;/;
-  if (authUsingRegex.test(contents)) {
+  const diUsingRegex = /using\s+[\w.]+\.Infrastructure\.DependencyInjection\s*;/;
+  if (diUsingRegex.test(contents)) {
+    skipped.push('using ...Infrastructure.DependencyInjection;');
+    return contents;
+  }
+
+  const legacyAuthUsingRegex = /using\s+[\w.]+\.Infrastructure\.Authentication\s*;/;
+  if (legacyAuthUsingRegex.test(contents)) {
     skipped.push('using ...Infrastructure.Authentication;');
     return contents;
   }
 
-  const infraUsingRegex = /using\s+([\w.]+)\.Infrastructure\s*;/;
+  const infraUsingRegex = /using\s+([\w.]+)\.Infrastructure(?:\.DependencyInjection)?\s*;/;
   const match = contents.match(infraUsingRegex);
   if (match) {
     const namespaceRoot = match[1];
-    const authUsing = `using ${namespaceRoot}.Infrastructure.Authentication;`;
-    const replacement = `${match[0]}\n${authUsing}`;
-    applied.push(authUsing);
+    const diUsing = `using ${namespaceRoot}.Infrastructure.DependencyInjection;`;
+    if (contents.includes(diUsing)) {
+      skipped.push(diUsing);
+      return contents;
+    }
+    const replacement = `${match[0]}\n${diUsing}`;
+    applied.push(diUsing);
     return contents.replace(match[0], replacement);
   }
 
-  // Fall back to appending after the final top-of-file using directive.
   const usingLineRegex = /^using\s+[\w.]+\s*;\s*$/gm;
   let lastUsing = null;
   let current;
@@ -91,12 +100,12 @@ function insertUsing(contents, applied, skipped) {
 
   if (lastUsing) {
     const insertAt = lastUsing.index + lastUsing[0].length;
-    const note = 'using ...Infrastructure.Authentication; (could not infer namespace — please verify)';
-    applied.push(note);
-    return `${contents.slice(0, insertAt)}\n// TODO: add "using <YourProject>.Infrastructure.Authentication;"${contents.slice(insertAt)}`;
+    const diUsing = 'using Infrastructure.DependencyInjection;';
+    applied.push('using ...Infrastructure.DependencyInjection;');
+    return `${contents.slice(0, insertAt)}\n${diUsing}${contents.slice(insertAt)}`;
   }
 
-  skipped.push('using ...Infrastructure.Authentication; (no using block found)');
+  skipped.push('using ...Infrastructure.DependencyInjection; (no using block found)');
   return contents;
 }
 

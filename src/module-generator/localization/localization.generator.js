@@ -2,9 +2,10 @@ import {
   finalizePlan,
   paths,
   isReact,
-  dbSetPartials,
+  dbSetUpdates,
   moduleRegistrationFile,
   reactDashboardNavUpdate,
+  routerUpdate,
 } from '../modules-orchestrator-helpers.js';
 
 /**
@@ -36,7 +37,14 @@ public sealed class Language
 `,
   });
 
-  files.push(...dbSetPartials(ns, 'Language', 'Languages'));
+  registryUpdates.push(...dbSetUpdates(ns, 'Language', 'Languages'));
+  registryUpdates.push(
+    routerUpdate(ns, 'Languages', 'Languages', [
+      { name: 'Root' },
+      { name: 'Lookup', suffix: '/Lookup' },
+      { name: 'ById', suffix: '/{id:guid}' },
+    ]),
+  );
 
   files.push({
     relativePath: paths.application('Abstractions', 'Localization', 'ICurrentLanguageContext.cs'),
@@ -129,50 +137,21 @@ public static class LanguageSeeder
   });
 
   files.push({
-    relativePath: paths.api('Routing', 'Router.Languages.g.cs'),
-    contents: `namespace ${ns}.API.Routing;
-
-public static partial class Router
-{
-    public static class Languages
-    {
-        public const string Root = Rule + "/Languages";
-        public const string Lookup = Root + "/Lookup";
-        public const string ById = Root + "/{id:guid}";
-    }
-}
-`,
-  });
-
-  files.push({
-    relativePath: paths.application('Common', 'Models', 'LookupItemDto.cs'),
-    writeMode: 'ifMissing',
-    contents: `namespace ${ns}.Application.Common.Models;
-
-public sealed record LookupItemDto
-{
-    public Guid Id { get; init; }
-    public string DisplayName { get; init; } = string.Empty;
-}
-`,
-  });
-
-  files.push({
-    relativePath: paths.api('Controllers', 'LanguagesController.cs'),
+    relativePath: paths.api('Endpoints', 'LanguagesEndpoints.cs'),
     contents: `using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using ${ns}.API.Routing;
+using ${ns}.API.Contracts;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Models;
 using ${ns}.Domain.Entities;
 
-namespace ${ns}.API.Controllers;
+namespace ${ns}.API.Endpoints;
 
-public sealed class LanguagesController : ApiControllerBase
+public sealed class LanguagesEndpoints : ApiControllerBase
 {
     private readonly IApplicationDbContext _db;
 
-    public LanguagesController(IApplicationDbContext db) => _db = db;
+    public LanguagesEndpoints(IApplicationDbContext db) => _db = db;
 
     [HttpGet(Router.Languages.Lookup)]
     public async Task<IActionResult> Lookup(CancellationToken ct)
@@ -194,6 +173,19 @@ public sealed class LanguagesController : ApiControllerBase
             .ToListAsync(ct);
         return Ok(items);
     }
+}
+`,
+  });
+
+  files.push({
+    relativePath: paths.application('Common', 'Models', 'LookupItemDto.cs'),
+    writeMode: 'ifMissing',
+    contents: `namespace ${ns}.Application.Common.Models;
+
+public sealed record LookupItemDto
+{
+    public Guid Id { get; init; }
+    public string DisplayName { get; init; } = string.Empty;
 }
 `,
   });

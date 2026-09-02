@@ -7,6 +7,7 @@ import { pluralizePascal, toCamelCase } from '../utils/feature-naming.js';
 import { planLookupFiles, canBeLookupTarget } from './lookup.generator.js';
 import { getBackendFilePath } from '../../utils/project-paths.js';
 import { isDapperOnly, usesDapper } from './architecture.js';
+import { applicationFeatureBase, entityClrName } from './clean-architecture.js';
 import { isAutoMapper } from '../feature-profile.js';
 import {
   mappingCtorAssign,
@@ -33,17 +34,16 @@ import {
 export function planApplicationFiles(config) {
   const { pluralName, singularName } = config.feature;
   const ops = config.operations;
-  const base = (...segments) =>
-    getBackendFilePath(config, 'Application', 'Features', pluralName, ...segments);
+  const base = (...segments) => applicationFeatureBase(config, ...segments);
 
   /** @type {{ relativePath: string, contents: string, writeMode?: string }[]} */
   const files = [
     {
-      relativePath: base('Common', `${singularName}Dto.cs`),
+      relativePath: base('DTOs', `${singularName}Dto.cs`),
       contents: renderDto(config),
     },
     {
-      relativePath: base('Common', isAutoMapper(config) ? `${singularName}MappingProfile.cs` : `${singularName}Mappings.cs`),
+      relativePath: base('Mapping', isAutoMapper(config) ? `${singularName}MappingProfile.cs` : `${singularName}Mappings.cs`),
       contents: isAutoMapper(config) ? renderAutoMapperProfile(config) : renderMappings(config),
     },
   ];
@@ -51,15 +51,15 @@ export function planApplicationFiles(config) {
   if (ops.search) {
     files.push(
       {
-        relativePath: base('Search', `Search${pluralName}Query.cs`),
+        relativePath: base('Queries', 'Search', `Search${pluralName}Query.cs`),
         contents: renderSearchQuery(config),
       },
       {
-        relativePath: base('Search', `Search${pluralName}QueryHandler.cs`),
+        relativePath: base('Queries', 'Search', `Search${pluralName}QueryHandler.cs`),
         contents: renderSearchHandler(config),
       },
       {
-        relativePath: base('Search', `Search${pluralName}QueryValidator.cs`),
+        relativePath: base('Queries', 'Search', `Search${pluralName}QueryValidator.cs`),
         contents: renderSearchValidator(config),
       },
     );
@@ -68,11 +68,11 @@ export function planApplicationFiles(config) {
   if (ops.getById) {
     files.push(
       {
-        relativePath: base('GetById', `Get${singularName}ByIdQuery.cs`),
+        relativePath: base('Queries', 'GetById', `Get${singularName}ByIdQuery.cs`),
         contents: renderGetByIdQuery(config),
       },
       {
-        relativePath: base('GetById', `Get${singularName}ByIdQueryHandler.cs`),
+        relativePath: base('Queries', 'GetById', `Get${singularName}ByIdQueryHandler.cs`),
         contents: renderGetByIdHandler(config),
       },
     );
@@ -81,15 +81,15 @@ export function planApplicationFiles(config) {
   if (ops.create) {
     files.push(
       {
-        relativePath: base('Create', `Create${singularName}Command.cs`),
+        relativePath: base('Commands', 'Create', `Create${singularName}Command.cs`),
         contents: renderCreateCommand(config),
       },
       {
-        relativePath: base('Create', `Create${singularName}CommandHandler.cs`),
+        relativePath: base('Commands', 'Create', `Create${singularName}CommandHandler.cs`),
         contents: renderCreateHandler(config),
       },
       {
-        relativePath: base('Create', `Create${singularName}CommandValidator.cs`),
+        relativePath: base('Commands', 'Create', `Create${singularName}CommandValidator.cs`),
         contents: renderCreateValidator(config),
       },
     );
@@ -98,15 +98,15 @@ export function planApplicationFiles(config) {
   if (ops.update) {
     files.push(
       {
-        relativePath: base('Update', `Update${singularName}Command.cs`),
+        relativePath: base('Commands', 'Update', `Update${singularName}Command.cs`),
         contents: renderUpdateCommand(config),
       },
       {
-        relativePath: base('Update', `Update${singularName}CommandHandler.cs`),
+        relativePath: base('Commands', 'Update', `Update${singularName}CommandHandler.cs`),
         contents: renderUpdateHandler(config),
       },
       {
-        relativePath: base('Update', `Update${singularName}CommandValidator.cs`),
+        relativePath: base('Commands', 'Update', `Update${singularName}CommandValidator.cs`),
         contents: renderUpdateValidator(config),
       },
     );
@@ -115,11 +115,11 @@ export function planApplicationFiles(config) {
   if (ops.delete) {
     files.push(
       {
-        relativePath: base('Delete', `Delete${singularName}Command.cs`),
+        relativePath: base('Commands', 'Delete', `Delete${singularName}Command.cs`),
         contents: renderDeleteCommand(config),
       },
       {
-        relativePath: base('Delete', `Delete${singularName}CommandHandler.cs`),
+        relativePath: base('Commands', 'Delete', `Delete${singularName}CommandHandler.cs`),
         contents: renderDeleteHandler(config),
       },
     );
@@ -128,11 +128,11 @@ export function planApplicationFiles(config) {
   if (ops.restore) {
     files.push(
       {
-        relativePath: base('Restore', `Restore${singularName}Command.cs`),
+        relativePath: base('Commands', 'Restore', `Restore${singularName}Command.cs`),
         contents: renderRestoreCommand(config),
       },
       {
-        relativePath: base('Restore', `Restore${singularName}CommandHandler.cs`),
+        relativePath: base('Commands', 'Restore', `Restore${singularName}CommandHandler.cs`),
         contents: renderRestoreHandler(config),
       },
     );
@@ -265,7 +265,7 @@ function renderDto(config) {
   const usings = commonUsings(config);
   const usingBlock = usings.length > 0 ? `${usings.join('\n')}\n\n` : '';
 
-  return `${usingBlock}namespace ${ns}.Application.Features.${pluralName}.Common;
+  return `${usingBlock}namespace ${ns}.Application.Features.${singularName}.DTOs;
 
 public sealed record ${singularName}Dto
 {
@@ -330,18 +330,21 @@ function renderMappings(config) {
     );
   }
 
-  const usings = [`using ${ns}.Domain.Entities;`];
+  const usings = [
+    `using ${ns}.Domain.Entities;`,
+    `using ${ns}.Application.Features.${singularName}.DTOs;`,
+  ];
   if (usesLookupModels(config)) {
     usings.push(`using ${ns}.Application.Common.Models;`);
   }
 
   return `${usings.join('\n')}
 
-namespace ${ns}.Application.Features.${pluralName}.Common;
+namespace ${ns}.Application.Features.${singularName}.Mapping;
 
 public static class ${singularName}Mappings
 {
-    public static ${singularName}Dto ToDto(${singularName} entity)
+    public static ${singularName}Dto ToDto(${entityClrName(config)} entity)
     {
         return new ${singularName}Dto
         {
@@ -390,9 +393,10 @@ export function renderSearchQuery(config) {
   return `using MediatR;
 ${usings}using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 
-namespace ${ns}.Application.Features.${pluralName}.Search;
+namespace ${ns}.Application.Features.${singularName}.Queries.Search;
 
 public sealed class Search${pluralName}Query : SearchRequest, IRequest<Result<PaginationResult<${singularName}Dto>>>
 {${filterBlock}}
@@ -414,7 +418,7 @@ export function renderSearchHandler(config) {
   const includeBlock = includes.length > 0 ? `\n${includes.join('\n')}` : '';
   // With Include(...) the inferred type is IIncludableQueryable, which cannot
   // hold the IQueryable returned by later Where(...) calls. Pin the type.
-  const queryDecl = includes.length > 0 ? `IQueryable<${singularName}>` : 'var';
+  const queryDecl = includes.length > 0 ? `IQueryable<${entityClrName(config)}>` : 'var';
 
   /** @type {string[]} */
   const filterBlocks = [];
@@ -478,10 +482,11 @@ using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 using ${ns}.Domain.Entities;
 ${usesEnums(config) ? `using ${ns}.Domain.Enums;\n` : ''}
-namespace ${ns}.Application.Features.${pluralName}.Search;
+namespace ${ns}.Application.Features.${singularName}.Queries.Search;
 
 public sealed class Search${pluralName}QueryHandler
     : IRequestHandler<Search${pluralName}Query, Result<PaginationResult<${singularName}Dto>>>
@@ -543,13 +548,13 @@ ${sortCases}
  * @param {object} config
  */
 export function renderSearchValidator(config) {
-  const { pluralName } = config.feature;
+  const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
 
   return `using FluentValidation;
 using ${ns}.Application.Common.Models;
 
-namespace ${ns}.Application.Features.${pluralName}.Search;
+namespace ${ns}.Application.Features.${singularName}.Queries.Search;
 
 public sealed class Search${pluralName}QueryValidator : AbstractValidator<Search${pluralName}Query>
 {
@@ -578,9 +583,10 @@ export function renderGetByIdQuery(config) {
 
   return `using MediatR;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 
-namespace ${ns}.Application.Features.${pluralName}.GetById;
+namespace ${ns}.Application.Features.${singularName}.Queries.GetById;
 
 public sealed record Get${singularName}ByIdQuery(Guid Id) : IRequest<Result<${singularName}Dto>>;
 `;
@@ -604,10 +610,11 @@ export function renderGetByIdHandler(config) {
 using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 using ${ns}.Domain.Entities;
 
-namespace ${ns}.Application.Features.${pluralName}.GetById;
+namespace ${ns}.Application.Features.${singularName}.Queries.GetById;
 
 public sealed class Get${singularName}ByIdQueryHandler
     : IRequestHandler<Get${singularName}ByIdQuery, Result<${singularName}Dto>>
@@ -807,9 +814,10 @@ export function renderCreateCommand(config) {
 
   return `using MediatR;
 ${usingBlock}using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 
-namespace ${ns}.Application.Features.${pluralName}.Create;
+namespace ${ns}.Application.Features.${singularName}.Commands.Create;
 
 public sealed record Create${singularName}Command : IRequest<Result<${singularName}Dto>>
 {
@@ -867,10 +875,11 @@ export function renderCreateHandler(config) {
 using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 using ${ns}.Domain.Entities;
 
-namespace ${ns}.Application.Features.${pluralName}.Create;
+namespace ${ns}.Application.Features.${singularName}.Commands.Create;
 
 public sealed class Create${singularName}CommandHandler
     : IRequestHandler<Create${singularName}Command, Result<${singularName}Dto>>
@@ -886,7 +895,7 @@ public sealed class Create${singularName}CommandHandler
         Create${singularName}Command request,
         CancellationToken cancellationToken)
     {
-${preamble}        var entity = new ${singularName}
+${preamble}        var entity = new ${entityClrName(config)}
         {
 ${initializerLines.join('\n')}
         };${assignmentTail}
@@ -918,9 +927,10 @@ export function renderUpdateCommand(config) {
 
   return `using MediatR;
 ${usingBlock}using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 
-namespace ${ns}.Application.Features.${pluralName}.Update;
+namespace ${ns}.Application.Features.${singularName}.Commands.Update;
 
 public sealed record Update${singularName}Command : IRequest<Result<${singularName}Dto>>
 {
@@ -989,9 +999,10 @@ export function renderUpdateHandler(config) {
 using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 
-namespace ${ns}.Application.Features.${pluralName}.Update;
+namespace ${ns}.Application.Features.${singularName}.Commands.Update;
 
 public sealed class Update${singularName}CommandHandler
     : IRequestHandler<Update${singularName}Command, Result<${singularName}Dto>>
@@ -1169,7 +1180,7 @@ export function renderCreateValidator(config) {
 
   return `using FluentValidation;
 
-namespace ${ns}.Application.Features.${pluralName}.Create;
+namespace ${ns}.Application.Features.${singularName}.Commands.Create;
 
 public sealed class Create${singularName}CommandValidator : AbstractValidator<Create${singularName}Command>
 {
@@ -1190,7 +1201,7 @@ export function renderUpdateValidator(config) {
 
   return `using FluentValidation;
 
-namespace ${ns}.Application.Features.${pluralName}.Update;
+namespace ${ns}.Application.Features.${singularName}.Commands.Update;
 
 public sealed class Update${singularName}CommandValidator : AbstractValidator<Update${singularName}Command>
 {
@@ -1220,7 +1231,7 @@ export function renderDeleteCommand(config) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.${pluralName}.Delete;
+namespace ${ns}.Application.Features.${singularName}.Commands.Delete;
 
 public sealed record Delete${singularName}Command(Guid Id) : IRequest<Result>;
 `;
@@ -1241,7 +1252,7 @@ using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.${pluralName}.Delete;
+namespace ${ns}.Application.Features.${singularName}.Commands.Delete;
 
 public sealed class Delete${singularName}CommandHandler
     : IRequestHandler<Delete${singularName}Command, Result>
@@ -1288,9 +1299,10 @@ export function renderRestoreCommand(config) {
 
   return `using MediatR;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 
-namespace ${ns}.Application.Features.${pluralName}.Restore;
+namespace ${ns}.Application.Features.${singularName}.Commands.Restore;
 
 public sealed record Restore${singularName}Command(Guid Id) : IRequest<Result<${singularName}Dto>>;
 `;
@@ -1310,9 +1322,10 @@ export function renderRestoreHandler(config) {
 using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.${pluralName}.Common;
+using ${ns}.Application.Features.${singularName}.DTOs;
+using ${ns}.Application.Features.${singularName}.Mapping;
 
-namespace ${ns}.Application.Features.${pluralName}.Restore;
+namespace ${ns}.Application.Features.${singularName}.Commands.Restore;
 
 public sealed class Restore${singularName}CommandHandler
     : IRequestHandler<Restore${singularName}Command, Result<${singularName}Dto>>

@@ -1,4 +1,6 @@
-import { paths } from '../modules-orchestrator-helpers.js';
+import path from 'node:path';
+import { paths, routerUpdate } from '../modules-orchestrator-helpers.js';
+import { upsertContextDbSet } from '../../feature-generator/backend/clean-architecture.js';
 import { assertBackendCompatibility } from '../../models/backend.js';
 
 /**
@@ -50,7 +52,7 @@ const DEFAULT_ROLE = 'User';
  */
 export const AUTH_BACKEND_ORCHESTRATION_NOTES = [
   'Change ApplicationDbContext base type from "DbContext" to "IdentityDbContext<ApplicationUser, ApplicationRole, Guid>" (keep the IApplicationDbContext interface and the existing OnModelCreating body — base.OnModelCreating configures Identity).',
-  'Add "using <ProjectName>.Infrastructure.Authentication;" to ApplicationDbContext.cs for the ApplicationUser/ApplicationRole types.',
+  'Add "using <ProjectName>.Infrastructure.Identity;" to ApplicationDbContext.cs for the ApplicationUser/ApplicationRole types.',
   'Patch Program.cs via patchProgramForAuth() to register AddAuthModule and insert UseAuthentication/UseAuthorization before MapControllers.',
   'Merge getAuthAppsettingsPatch() into appsettings.json (and provide a Development override with Secure=false / SameSite=Lax if serving over http).',
   'Provide the JWT signing key out-of-band via the environment variable "Jwt__SigningKey" (never commit a production key).',
@@ -84,6 +86,8 @@ export function planAuthBackend(config) {
   /** @type {PlannedFile[]} */
   const files = [];
 
+  const infraIdentity = (...segments) =>
+    paths.infrastructure('Identity', ...segments);
   const infraAuth = (...segments) =>
     paths.infrastructure('Authentication', ...segments);
   const infraPersistence = (...segments) =>
@@ -93,15 +97,19 @@ export function planAuthBackend(config) {
   const appAuthz = (...segments) =>
     paths.application('Common', 'Authorization', ...segments);
   const appFeature = (...segments) =>
-    paths.application('Features', 'Auth', ...segments);
+    paths.application('Features', 'Authentication', ...segments);
   const api = (...segments) => paths.api(...segments);
+
+  // --- Infrastructure/Identity -------------------------------------------
+  files.push(
+    { relativePath: infraIdentity('ApplicationUser.cs'), contents: renderApplicationUser(ctx) },
+    { relativePath: infraIdentity('ApplicationRole.cs'), contents: renderApplicationRole(ctx) },
+    { relativePath: infraIdentity('IdentityService.cs'), contents: renderIdentityService(ctx) },
+    { relativePath: infraIdentity('CurrentUserService.cs'), contents: renderCurrentUserService(ctx) },
+  );
 
   // --- Infrastructure/Authentication -------------------------------------
   files.push(
-    { relativePath: infraAuth('ApplicationUser.cs'), contents: renderApplicationUser(ctx) },
-    { relativePath: infraAuth('ApplicationRole.cs'), contents: renderApplicationRole(ctx) },
-    // Supersede the scaffold placeholder JwtOptions with the module version
-    // that adds AccessTokenMinutes.
     { relativePath: infraAuth('JwtOptions.cs'), contents: renderJwtOptions(ctx), writeMode: 'replace' },
     { relativePath: infraAuth('RefreshTokenCookieOptions.cs'), contents: renderRefreshTokenCookieOptions(ctx) },
     { relativePath: infraAuth('IJwtTokenService.cs'), contents: renderIJwtTokenService(ctx) },
@@ -110,19 +118,31 @@ export function planAuthBackend(config) {
     { relativePath: infraAuth('RefreshTokenService.cs'), contents: renderRefreshTokenService(ctx) },
     { relativePath: infraAuth('RefreshTokenCookieManager.cs'), contents: renderRefreshTokenCookieManager(ctx) },
     { relativePath: infraAuth('AuthCookieService.cs'), contents: renderAuthCookieService(ctx) },
-    { relativePath: infraAuth('CurrentUserService.cs'), contents: renderCurrentUserService(ctx) },
-    { relativePath: infraAuth('IdentityService.cs'), contents: renderIdentityService(ctx) },
-    { relativePath: infraAuth('DevelopmentEmailSender.cs'), contents: renderDevelopmentEmailSender(ctx) },
-    { relativePath: infraAuth('AuthDataSeeder.cs'), contents: renderAuthDataSeeder(ctx) },
-    { relativePath: infraAuth('AuthDependencyInjection.cs'), contents: renderAuthDependencyInjection(ctx) },
-    { relativePath: infraAuth('AuthApplicationBuilderExtensions.cs'), contents: renderAuthApplicationBuilderExtensions(ctx) },
+  );
+
+  files.push(
+    {
+      relativePath: paths.infrastructure('Services', 'DevelopmentEmailSender.cs'),
+      contents: renderDevelopmentEmailSender(ctx),
+    },
+    {
+      relativePath: paths.infrastructure('Seeders', 'AuthDataSeeder.cs'),
+      contents: renderAuthDataSeeder(ctx),
+    },
+    {
+      relativePath: paths.infrastructure('DependencyInjection', 'AuthenticationServiceExtensions.cs'),
+      contents: renderAuthDependencyInjection(ctx),
+    },
+    {
+      relativePath: paths.infrastructure('DependencyInjection', 'AuthApplicationBuilderExtensions.cs'),
+      contents: renderAuthApplicationBuilderExtensions(ctx),
+    },
   );
 
   // --- Infrastructure/Persistence ----------------------------------------
   files.push(
     { relativePath: infraPersistence('Entities', 'RefreshToken.cs'), contents: renderRefreshTokenEntity(ctx) },
     { relativePath: infraPersistence('Configurations', 'RefreshTokenConfiguration.cs'), contents: renderRefreshTokenConfiguration(ctx) },
-    { relativePath: infraPersistence('ApplicationDbContext.Auth.g.cs'), contents: renderDbContextPartial(ctx) },
   );
 
   // --- Application/Abstractions (shared → ifMissing) ----------------------
@@ -144,31 +164,60 @@ export function planAuthBackend(config) {
     { relativePath: appAuthz('HasPermissionAttribute.cs'), contents: renderHasPermissionAttribute(ctx) },
   );
 
-  // --- Application/Features/Auth ------------------------------------------
+  // --- Application/Features/Authentication --------------------------------
   files.push(
-    { relativePath: appFeature('Common', 'UserInfoDto.cs'), contents: renderUserInfoDto(ctx) },
-    { relativePath: appFeature('Common', 'AuthResponseDto.cs'), contents: renderAuthResponseDto(ctx) },
-    { relativePath: appFeature('Register', 'RegisterCommand.cs'), contents: renderRegisterCommand(ctx) },
-    { relativePath: appFeature('Register', 'RegisterCommandHandler.cs'), contents: renderRegisterHandler(ctx) },
-    { relativePath: appFeature('Register', 'RegisterCommandValidator.cs'), contents: renderRegisterValidator(ctx) },
-    { relativePath: appFeature('Login', 'LoginCommand.cs'), contents: renderLoginCommand(ctx) },
-    { relativePath: appFeature('Login', 'LoginCommandHandler.cs'), contents: renderLoginHandler(ctx) },
-    { relativePath: appFeature('Login', 'LoginCommandValidator.cs'), contents: renderLoginValidator(ctx) },
-    { relativePath: appFeature('Refresh', 'RefreshCommand.cs'), contents: renderRefreshCommand(ctx) },
-    { relativePath: appFeature('Refresh', 'RefreshCommandHandler.cs'), contents: renderRefreshHandler(ctx) },
-    { relativePath: appFeature('Logout', 'LogoutCommand.cs'), contents: renderLogoutCommand(ctx) },
-    { relativePath: appFeature('Logout', 'LogoutCommandHandler.cs'), contents: renderLogoutHandler(ctx) },
-    { relativePath: appFeature('Me', 'GetMeQuery.cs'), contents: renderGetMeQuery(ctx) },
-    { relativePath: appFeature('Me', 'GetMeQueryHandler.cs'), contents: renderGetMeHandler(ctx) },
+    { relativePath: appFeature('DTOs', 'UserInfoDto.cs'), contents: renderUserInfoDto(ctx) },
+    { relativePath: appFeature('DTOs', 'AuthResponseDto.cs'), contents: renderAuthResponseDto(ctx) },
+    { relativePath: appFeature('Commands', 'Register', 'RegisterCommand.cs'), contents: renderRegisterCommand(ctx) },
+    { relativePath: appFeature('Commands', 'Register', 'RegisterCommandHandler.cs'), contents: renderRegisterHandler(ctx) },
+    { relativePath: appFeature('Commands', 'Register', 'RegisterCommandValidator.cs'), contents: renderRegisterValidator(ctx) },
+    { relativePath: appFeature('Commands', 'Login', 'LoginCommand.cs'), contents: renderLoginCommand(ctx) },
+    { relativePath: appFeature('Commands', 'Login', 'LoginCommandHandler.cs'), contents: renderLoginHandler(ctx) },
+    { relativePath: appFeature('Commands', 'Login', 'LoginCommandValidator.cs'), contents: renderLoginValidator(ctx) },
+    { relativePath: appFeature('Commands', 'RefreshToken', 'RefreshTokenCommand.cs'), contents: renderRefreshCommand(ctx) },
+    { relativePath: appFeature('Commands', 'RefreshToken', 'RefreshTokenCommandHandler.cs'), contents: renderRefreshHandler(ctx) },
+    { relativePath: appFeature('Commands', 'Logout', 'LogoutCommand.cs'), contents: renderLogoutCommand(ctx) },
+    { relativePath: appFeature('Commands', 'Logout', 'LogoutCommandHandler.cs'), contents: renderLogoutHandler(ctx) },
+    { relativePath: appFeature('Queries', 'GetMe', 'GetMeQuery.cs'), contents: renderGetMeQuery(ctx) },
+    { relativePath: appFeature('Queries', 'GetMe', 'GetMeQueryHandler.cs'), contents: renderGetMeHandler(ctx) },
   );
 
   // --- API ----------------------------------------------------------------
   files.push(
-    { relativePath: api('Routing', 'Router.Auth.g.cs'), contents: renderRouter(ctx) },
-    { relativePath: api('Controllers', 'AuthController.cs'), contents: renderAuthController(ctx) },
+    { relativePath: api('Endpoints', 'AuthEndpoints.cs'), contents: renderAuthController(ctx) },
   );
 
   return files;
+}
+
+/**
+ * Router + persistence registry updates for the Authentication module.
+ *
+ * @param {AuthBackendConfig} config
+ */
+export function planAuthRegistryUpdates(config) {
+  const ns = requireProjectName(config);
+  return [
+    routerUpdate(ns, 'Authentication', 'Auth', [
+      { name: 'Root' },
+      { name: 'Register', suffix: '/Register' },
+      { name: 'Login', suffix: '/Login' },
+      { name: 'Refresh', suffix: '/Refresh' },
+      { name: 'Logout', suffix: '/Logout' },
+      { name: 'Me', suffix: '/Me' },
+    ]),
+    {
+      relativePath: paths.infrastructure('Persistence', 'ApplicationDbContext.cs'),
+      update: (existing) =>
+        upsertContextDbSet(
+          existing,
+          ns,
+          'RefreshToken',
+          'RefreshTokens',
+          `${ns}.Infrastructure.Persistence.Entities`,
+        ),
+    },
+  ];
 }
 
 /**
@@ -181,10 +230,10 @@ export function planAuthBackend(config) {
 export function authBackendConflictPaths(config) {
   requireProjectName(config);
   return [
-    path.join('Infrastructure', 'Authentication', 'AuthDependencyInjection.cs'),
-    path.join('Application', 'Features', 'Auth'),
+    path.join('Infrastructure', 'DependencyInjection', 'AuthenticationServiceExtensions.cs'),
+    path.join('Application', 'Features', 'Authentication'),
     path.join('Application', 'Common', 'Authorization', 'AppPermissions.cs'),
-    path.join('API', 'Controllers', 'AuthController.cs'),
+    path.join('API', 'Endpoints', 'AuthEndpoints.cs'),
     path.join('Infrastructure', 'Persistence', 'Entities', 'RefreshToken.cs'),
   ];
 }
@@ -312,7 +361,7 @@ function adminRoleConst(ctx) {
 function renderApplicationUser({ ns }) {
   return `using Microsoft.AspNetCore.Identity;
 
-namespace ${ns}.Infrastructure.Authentication;
+namespace ${ns}.Infrastructure.Identity;
 
 public sealed class ApplicationUser : IdentityUser<Guid>
 {
@@ -325,7 +374,7 @@ public sealed class ApplicationUser : IdentityUser<Guid>
 function renderApplicationRole({ ns }) {
   return `using Microsoft.AspNetCore.Identity;
 
-namespace ${ns}.Infrastructure.Authentication;
+namespace ${ns}.Infrastructure.Identity;
 
 public sealed class ApplicationRole : IdentityRole<Guid>
 {
@@ -806,7 +855,7 @@ using Microsoft.AspNetCore.Http;
 using ${ns}.Application.Abstractions;
 using ${ns}.Application.Common.Authorization;
 
-namespace ${ns}.Infrastructure.Authentication;
+namespace ${ns}.Infrastructure.Identity;
 
 public sealed class CurrentUserService : ICurrentUser
 {
@@ -853,9 +902,10 @@ using Microsoft.AspNetCore.Identity;
 using ${ns}.Application.Abstractions.Authentication;
 using ${ns}.Application.Common.Authorization;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Auth.Common;
+using ${ns}.Application.Features.Authentication.DTOs;
+using ${ns}.Infrastructure.Authentication;
 
-namespace ${ns}.Infrastructure.Authentication;
+namespace ${ns}.Infrastructure.Identity;
 
 public sealed class IdentityService : IIdentityService
 {
@@ -1047,7 +1097,7 @@ function renderDevelopmentEmailSender({ ns }) {
   return `using Microsoft.Extensions.Logging;
 using ${ns}.Application.Abstractions;
 
-namespace ${ns}.Infrastructure.Authentication;
+namespace ${ns}.Infrastructure.Services;
 
 /// <summary>
 /// A no-op email sender for local development. It deliberately never logs
@@ -1087,8 +1137,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ${ns}.Application.Common.Authorization;
+using ${ns}.Infrastructure.Identity;
 
-namespace ${ns}.Infrastructure.Authentication;
+namespace ${ns}.Infrastructure.Seeders;
 
 /// <summary>
 /// Idempotently seeds roles (and their permission claims) plus an optional
@@ -1213,11 +1264,15 @@ using Microsoft.IdentityModel.Tokens;
 using ${ns}.Application.Abstractions;
 using ${ns}.Application.Abstractions.Authentication;
 using ${ns}.Application.Common.Authorization;
+using ${ns}.Infrastructure.Authentication;
+using ${ns}.Infrastructure.Identity;
 using ${ns}.Infrastructure.Persistence;
+using ${ns}.Infrastructure.Seeders;
+using ${ns}.Infrastructure.Services;
 
-namespace ${ns}.Infrastructure.Authentication;
+namespace ${ns}.Infrastructure.DependencyInjection;
 
-public static class AuthDependencyInjection
+public static class AuthenticationServiceExtensions
 {
     public static IServiceCollection AddAuthModule(
         this IServiceCollection services,
@@ -1307,8 +1362,9 @@ public static class AuthDependencyInjection
 function renderAuthApplicationBuilderExtensions({ ns }) {
   return `using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using ${ns}.Infrastructure.Seeders;
 
-namespace ${ns}.Infrastructure.Authentication;
+namespace ${ns}.Infrastructure.DependencyInjection;
 
 public static class AuthApplicationBuilderExtensions
 {
@@ -1408,20 +1464,6 @@ public sealed class RefreshTokenConfiguration : IEntityTypeConfiguration<Refresh
 `;
 }
 
-/** @param {{ ns: string }} ctx */
-function renderDbContextPartial({ ns }) {
-  return `using Microsoft.EntityFrameworkCore;
-using ${ns}.Infrastructure.Persistence.Entities;
-
-namespace ${ns}.Infrastructure.Persistence;
-
-public partial class ApplicationDbContext
-{
-    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
-}
-`;
-}
-
 /* ====================================================================== */
 /* Application/Abstractions renderers                                      */
 /* ====================================================================== */
@@ -1463,7 +1505,7 @@ public interface IEmailSender
 /** @param {{ ns: string }} ctx */
 function renderIIdentityService({ ns }) {
   return `using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Auth.Common;
+using ${ns}.Application.Features.Authentication.DTOs;
 
 namespace ${ns}.Application.Abstractions.Authentication;
 
@@ -1511,7 +1553,7 @@ public interface IAuthCookieService
 
 /** @param {{ ns: string }} ctx */
 function renderAuthTokens({ ns }) {
-  return `using ${ns}.Application.Features.Auth.Common;
+  return `using ${ns}.Application.Features.Authentication.DTOs;
 
 namespace ${ns}.Application.Abstractions.Authentication;
 
@@ -1717,7 +1759,7 @@ public sealed class HasPermissionAttribute : AuthorizeAttribute
 
 /** @param {{ ns: string }} ctx */
 function renderUserInfoDto({ ns }) {
-  return `namespace ${ns}.Application.Features.Auth.Common;
+  return `namespace ${ns}.Application.Features.Authentication.DTOs;
 
 public sealed record UserInfoDto
 {
@@ -1736,7 +1778,7 @@ public sealed record UserInfoDto
 
 /** @param {{ ns: string }} ctx */
 function renderAuthResponseDto({ ns }) {
-  return `namespace ${ns}.Application.Features.Auth.Common;
+  return `namespace ${ns}.Application.Features.Authentication.DTOs;
 
 /// <summary>
 /// The JSON response for login/refresh. It intentionally does NOT include the
@@ -1758,7 +1800,7 @@ function renderRegisterCommand({ ns }) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.Auth.Register;
+namespace ${ns}.Application.Features.Authentication.Commands.Register;
 
 public sealed record RegisterCommand : IRequest<Result>
 {
@@ -1780,7 +1822,7 @@ using ${ns}.Application.Abstractions.Authentication;
 using ${ns}.Application.Common.Authorization;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.Auth.Register;
+namespace ${ns}.Application.Features.Authentication.Commands.Register;
 
 public sealed class RegisterCommandHandler : IRequestHandler<RegisterCommand, Result>
 {
@@ -1811,7 +1853,7 @@ public sealed class RegisterCommandHandler : IRequestHandler<RegisterCommand, Re
 function renderRegisterValidator({ ns }) {
   return `using FluentValidation;
 
-namespace ${ns}.Application.Features.Auth.Register;
+namespace ${ns}.Application.Features.Authentication.Commands.Register;
 
 public sealed class RegisterCommandValidator : AbstractValidator<RegisterCommand>
 {
@@ -1838,9 +1880,9 @@ public sealed class RegisterCommandValidator : AbstractValidator<RegisterCommand
 function renderLoginCommand({ ns }) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Auth.Common;
+using ${ns}.Application.Features.Authentication.DTOs;
 
-namespace ${ns}.Application.Features.Auth.Login;
+namespace ${ns}.Application.Features.Authentication.Commands.Login;
 
 public sealed record LoginCommand : IRequest<Result<AuthResponseDto>>
 {
@@ -1856,9 +1898,9 @@ function renderLoginHandler({ ns }) {
   return `using MediatR;
 using ${ns}.Application.Abstractions.Authentication;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Auth.Common;
+using ${ns}.Application.Features.Authentication.DTOs;
 
-namespace ${ns}.Application.Features.Auth.Login;
+namespace ${ns}.Application.Features.Authentication.Commands.Login;
 
 public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, Result<AuthResponseDto>>
 {
@@ -1905,7 +1947,7 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, Result<A
 function renderLoginValidator({ ns }) {
   return `using FluentValidation;
 
-namespace ${ns}.Application.Features.Auth.Login;
+namespace ${ns}.Application.Features.Authentication.Commands.Login;
 
 public sealed class LoginCommandValidator : AbstractValidator<LoginCommand>
 {
@@ -1926,11 +1968,11 @@ public sealed class LoginCommandValidator : AbstractValidator<LoginCommand>
 function renderRefreshCommand({ ns }) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Auth.Common;
+using ${ns}.Application.Features.Authentication.DTOs;
 
-namespace ${ns}.Application.Features.Auth.Refresh;
+namespace ${ns}.Application.Features.Authentication.Commands.RefreshToken;
 
-public sealed record RefreshCommand : IRequest<Result<AuthResponseDto>>;
+public sealed record RefreshTokenCommand : IRequest<Result<AuthResponseDto>>;
 `;
 }
 
@@ -1939,23 +1981,23 @@ function renderRefreshHandler({ ns }) {
   return `using MediatR;
 using ${ns}.Application.Abstractions.Authentication;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Auth.Common;
+using ${ns}.Application.Features.Authentication.DTOs;
 
-namespace ${ns}.Application.Features.Auth.Refresh;
+namespace ${ns}.Application.Features.Authentication.Commands.RefreshToken;
 
-public sealed class RefreshCommandHandler : IRequestHandler<RefreshCommand, Result<AuthResponseDto>>
+public sealed class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, Result<AuthResponseDto>>
 {
     private readonly IIdentityService _identityService;
     private readonly IAuthCookieService _cookieService;
 
-    public RefreshCommandHandler(IIdentityService identityService, IAuthCookieService cookieService)
+    public RefreshTokenCommandHandler(IIdentityService identityService, IAuthCookieService cookieService)
     {
         _identityService = identityService;
         _cookieService = cookieService;
     }
 
     public async Task<Result<AuthResponseDto>> Handle(
-        RefreshCommand request,
+        RefreshTokenCommand request,
         CancellationToken cancellationToken)
     {
         var rawToken = _cookieService.ReadRefreshToken();
@@ -1991,7 +2033,7 @@ function renderLogoutCommand({ ns }) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.Auth.Logout;
+namespace ${ns}.Application.Features.Authentication.Commands.Logout;
 
 public sealed record LogoutCommand : IRequest<Result>;
 `;
@@ -2003,7 +2045,7 @@ function renderLogoutHandler({ ns }) {
 using ${ns}.Application.Abstractions.Authentication;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.Auth.Logout;
+namespace ${ns}.Application.Features.Authentication.Commands.Logout;
 
 public sealed class LogoutCommandHandler : IRequestHandler<LogoutCommand, Result>
 {
@@ -2035,9 +2077,9 @@ public sealed class LogoutCommandHandler : IRequestHandler<LogoutCommand, Result
 function renderGetMeQuery({ ns }) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Auth.Common;
+using ${ns}.Application.Features.Authentication.DTOs;
 
-namespace ${ns}.Application.Features.Auth.Me;
+namespace ${ns}.Application.Features.Authentication.Queries.GetMe;
 
 public sealed record GetMeQuery : IRequest<Result<UserInfoDto>>;
 `;
@@ -2049,9 +2091,9 @@ function renderGetMeHandler({ ns }) {
 using ${ns}.Application.Abstractions;
 using ${ns}.Application.Abstractions.Authentication;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Auth.Common;
+using ${ns}.Application.Features.Authentication.DTOs;
 
-namespace ${ns}.Application.Features.Auth.Me;
+namespace ${ns}.Application.Features.Authentication.Queries.GetMe;
 
 public sealed class GetMeQueryHandler : IRequestHandler<GetMeQuery, Result<UserInfoDto>>
 {
@@ -2083,51 +2125,32 @@ public sealed class GetMeQueryHandler : IRequestHandler<GetMeQuery, Result<UserI
 /* ====================================================================== */
 
 /** @param {{ ns: string }} ctx */
-function renderRouter({ ns }) {
-  return `namespace ${ns}.API.Routing;
-
-public static partial class Router
-{
-    public static class Auth
-    {
-        public const string Root = Rule + "/Auth";
-        public const string Register = Root + "/Register";
-        public const string Login = Root + "/Login";
-        public const string Refresh = Root + "/Refresh";
-        public const string Logout = Root + "/Logout";
-        public const string Me = Root + "/Me";
-    }
-}
-`;
-}
-
-/** @param {{ ns: string }} ctx */
 function renderAuthController({ ns }) {
   return `using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using ${ns}.API.Routing;
-using ${ns}.Application.Features.Auth.Login;
-using ${ns}.Application.Features.Auth.Logout;
-using ${ns}.Application.Features.Auth.Me;
-using ${ns}.Application.Features.Auth.Refresh;
-using ${ns}.Application.Features.Auth.Register;
+using ${ns}.API.Contracts;
+using ${ns}.Application.Features.Authentication.Commands.Login;
+using ${ns}.Application.Features.Authentication.Commands.Logout;
+using ${ns}.Application.Features.Authentication.Queries.GetMe;
+using ${ns}.Application.Features.Authentication.Commands.RefreshToken;
+using ${ns}.Application.Features.Authentication.Commands.Register;
 
-namespace ${ns}.API.Controllers;
+namespace ${ns}.API.Endpoints;
 
-public sealed class AuthController : ApiControllerBase
+public sealed class AuthEndpoints : ApiControllerBase
 {
     private readonly ISender _sender;
 
-    public AuthController(ISender sender)
+    public AuthEndpoints(ISender sender)
     {
         _sender = sender;
     }
 
     [AllowAnonymous]
     [EnableRateLimiting("auth")]
-    [HttpPost(Router.Auth.Register)]
+    [HttpPost(Router.Authentication.Register)]
     public async Task<IActionResult> Register(
         [FromBody] RegisterCommand command,
         CancellationToken cancellationToken)
@@ -2138,7 +2161,7 @@ public sealed class AuthController : ApiControllerBase
 
     [AllowAnonymous]
     [EnableRateLimiting("auth")]
-    [HttpPost(Router.Auth.Login)]
+    [HttpPost(Router.Authentication.Login)]
     public async Task<IActionResult> Login(
         [FromBody] LoginCommand command,
         CancellationToken cancellationToken)
@@ -2149,15 +2172,15 @@ public sealed class AuthController : ApiControllerBase
 
     [AllowAnonymous]
     [EnableRateLimiting("auth")]
-    [HttpPost(Router.Auth.Refresh)]
+    [HttpPost(Router.Authentication.Refresh)]
     public async Task<IActionResult> Refresh(CancellationToken cancellationToken)
     {
-        var result = await _sender.Send(new RefreshCommand(), cancellationToken);
+        var result = await _sender.Send(new RefreshTokenCommand(), cancellationToken);
         return ToActionResult(result);
     }
 
     [Authorize]
-    [HttpPost(Router.Auth.Logout)]
+    [HttpPost(Router.Authentication.Logout)]
     public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
         var result = await _sender.Send(new LogoutCommand(), cancellationToken);
@@ -2165,7 +2188,7 @@ public sealed class AuthController : ApiControllerBase
     }
 
     [Authorize]
-    [HttpGet(Router.Auth.Me)]
+    [HttpGet(Router.Authentication.Me)]
     public async Task<IActionResult> Me(CancellationToken cancellationToken)
     {
         var result = await _sender.Send(new GetMeQuery(), cancellationToken);

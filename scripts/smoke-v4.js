@@ -129,7 +129,7 @@ async function securityAudit(projectDir) {
 
 async function assertAuthArchitecture(layout, library) {
   await assertExists(
-    backendFile(layout, 'Infrastructure', 'Authentication', 'AuthDependencyInjection.cs'),
+    backendFile(layout, 'Infrastructure', 'DependencyInjection', 'AuthenticationServiceExtensions.cs'),
     'Auth DI',
   );
   await assertExists(
@@ -137,8 +137,8 @@ async function assertAuthArchitecture(layout, library) {
     'RefreshToken entity',
   );
   await assertExists(
-    backendFile(layout, 'API', 'Controllers', 'AuthController.cs'),
-    'AuthController',
+    backendFile(layout, 'API', 'Endpoints', 'AuthEndpoints.cs'),
+    'AuthEndpoints',
   );
 
   const refreshEntity = await fs.readFile(

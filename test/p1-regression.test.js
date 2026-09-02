@@ -53,6 +53,11 @@ test('EF Core + Identity + JWT remains a supported combination', () => {
     });
     assert.ok(files.some((file) => file.relativePath.replaceAll('\\', '/').endsWith('AuthDataSeeder.cs')));
     assert.ok(files.some((file) => /AddEntityFrameworkStores/.test(file.contents)));
+    assert.ok(files.some((file) => file.relativePath.replaceAll('\\', '/').includes('Infrastructure/Identity/ApplicationUser.cs')));
+    assert.ok(files.some((file) => file.relativePath.replaceAll('\\', '/').includes('Infrastructure/Authentication/JwtTokenService.cs')));
+    assert.ok(files.some((file) => file.relativePath.replaceAll('\\', '/').endsWith('AuthenticationServiceExtensions.cs')));
+    assert.ok(files.some((file) => file.relativePath.replaceAll('\\', '/').endsWith('AuthEndpoints.cs')));
+    assert.ok(files.every((file) => !file.relativePath.includes('.g.cs')));
   } finally {
     setModuleManifestContext(null);
   }

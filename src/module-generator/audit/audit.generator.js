@@ -20,17 +20,19 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { upsertTypeMember } from '../../utils/csharp-source.js';
 import {
   paths,
   isReact,
   isAngular,
   isNext,
-  dbSetPartials,
+  dbSetUpdates,
   currentUserAbstraction,
   moduleRegistrationFile,
   reactReducerUpdate,
   reactDashboardNavUpdate,
   finalizePlan,
+  routerUpdate,
 } from '../modules-orchestrator-helpers.js';
 import {
   buildAngularGeneratedRoutes,
@@ -52,6 +54,14 @@ export async function planAuditModule(config) {
   const notes = [];
 
   registryUpdates.push(registerFeaturePermissions(config, 'Audit', ['View']));
+  registryUpdates.push(...dbSetUpdates(ns, 'AuditLog', 'AuditLogs'));
+  registryUpdates.push(
+    routerUpdate(ns, 'AuditLogs', 'AuditLogs', [
+      { name: 'Root' },
+      { name: 'Search', suffix: '/Search' },
+      { name: 'ById', suffix: '/{id:guid}' },
+    ]),
+  );
 
   // Decide how to handle the BaseEntity audit-user columns ----------
   const baseEntity = await resolveBaseEntityUpgrade(config);
@@ -70,7 +80,6 @@ export async function planAuditModule(config) {
   });
 
   // Persistence -----------------------------------------------------
-  files.push(...dbSetPartials(ns, 'AuditLog', 'AuditLogs'));
   files.push({
     relativePath: paths.infrastructure(
       'Persistence',
@@ -202,55 +211,28 @@ async function resolveBaseEntityUpgrade(config) {
     return { hasAuditUserFields: false, files, notes };
   }
 
-  const alreadyPartial = /\bpartial\s+class\s+BaseEntity\b/.test(existing);
-  const alreadyHasFields = existing.includes('CreatedByUserId');
-
-  if (!alreadyPartial) {
-    // Safely convert to a partial class so the audit columns can be added out
-    // of band without touching the hand-authored members.
-    const upgraded = existing.replace(
-      /(\bpublic\s+abstract\s+)class(\s+BaseEntity\b)/,
-      '$1partial class$2',
-    );
-
-    if (upgraded === existing) {
-      notes.push(
-        'BaseEntity is not a recognizable "public abstract class BaseEntity"; emitting interceptor-only audit.',
-      );
-      return { hasAuditUserFields: false, files, notes };
-    }
-
-    files.push({ relativePath: relative, contents: upgraded, writeMode: 'replace' });
+  if (existing.includes('CreatedByUserId')) {
+    notes.push('BaseEntity already has audit-user columns.');
+    return { hasAuditUserFields: true, files, notes };
   }
 
-  if (!alreadyHasFields) {
-    files.push({
-      relativePath: paths.domain('Common', 'BaseEntity.Audit.g.cs'),
-      contents: renderBaseEntityAuditPartial(ns),
-    });
+  try {
+    let next = existing;
+    next = upsertTypeMember(next, 'BaseEntity', '    public Guid? CreatedByUserId { get; set; }');
+    next = upsertTypeMember(next, 'BaseEntity', '    public Guid? UpdatedByUserId { get; set; }');
+    next = upsertTypeMember(next, 'BaseEntity', '    public Guid? DeletedByUserId { get; set; }');
+    files.push({ relativePath: relative, contents: next, writeMode: 'replace' });
+  } catch {
+    notes.push(
+      'BaseEntity is not a recognizable class; emitting interceptor-only audit.',
+    );
+    return { hasAuditUserFields: false, files, notes };
   }
 
   notes.push(
-    'BaseEntity upgraded to partial; audit-user columns added via BaseEntity.Audit.g.cs (run an EF migration to create them).',
+    'BaseEntity audit-user columns added (run an EF migration to create them).',
   );
   return { hasAuditUserFields: true, files, notes };
-}
-
-/**
- * @param {string} ns
- */
-function renderBaseEntityAuditPartial(ns) {
-  return `namespace ${ns}.Domain.Common;
-
-public abstract partial class BaseEntity
-{
-    public Guid? CreatedByUserId { get; set; }
-
-    public Guid? UpdatedByUserId { get; set; }
-
-    public Guid? DeletedByUserId { get; set; }
-}
-`;
 }
 
 /* ================================================================== */
@@ -588,25 +570,24 @@ function planAuditApplication(ns) {
   const base = (...segments) => paths.application('Features', 'AuditLogs', ...segments);
 
   return [
-    { relativePath: base('Common', 'AuditLogDto.cs'), contents: renderAuditDto(ns) },
-    { relativePath: base('Common', 'AuditLogMappings.cs'), contents: renderAuditMappings(ns) },
-    { relativePath: base('Search', 'SearchAuditLogsQuery.cs'), contents: renderAuditSearchQuery(ns) },
+    { relativePath: base('DTOs', 'AuditLogDto.cs'), contents: renderAuditDto(ns) },
+    { relativePath: base('Mapping', 'AuditLogMappings.cs'), contents: renderAuditMappings(ns) },
+    { relativePath: base('Queries', 'Search', 'SearchAuditLogsQuery.cs'), contents: renderAuditSearchQuery(ns) },
     {
-      relativePath: base('Search', 'SearchAuditLogsQueryHandler.cs'),
+      relativePath: base('Queries', 'Search', 'SearchAuditLogsQueryHandler.cs'),
       contents: renderAuditSearchHandler(ns),
     },
     {
-      relativePath: base('Search', 'SearchAuditLogsQueryValidator.cs'),
+      relativePath: base('Queries', 'Search', 'SearchAuditLogsQueryValidator.cs'),
       contents: renderAuditSearchValidator(ns),
     },
-    { relativePath: base('GetById', 'GetAuditLogByIdQuery.cs'), contents: renderAuditGetByIdQuery(ns) },
+    { relativePath: base('Queries', 'GetById', 'GetAuditLogByIdQuery.cs'), contents: renderAuditGetByIdQuery(ns) },
     {
-      relativePath: base('GetById', 'GetAuditLogByIdQueryHandler.cs'),
+      relativePath: base('Queries', 'GetById', 'GetAuditLogByIdQueryHandler.cs'),
       contents: renderAuditGetByIdHandler(ns),
     },
-    { relativePath: paths.api('Routing', 'Router.AuditLogs.g.cs'), contents: renderAuditRouter(ns) },
     {
-      relativePath: paths.api('Controllers', 'AuditLogsController.cs'),
+      relativePath: paths.api('Endpoints', 'AuditLogsEndpoints.cs'),
       contents: renderAuditController(ns),
     },
   ];
@@ -616,7 +597,7 @@ function planAuditApplication(ns) {
  * @param {string} ns
  */
 function renderAuditDto(ns) {
-  return `namespace ${ns}.Application.Features.AuditLogs.Common;
+  return `namespace ${ns}.Application.Features.AuditLogs.DTOs;
 
 public sealed record AuditLogDto
 {
@@ -642,8 +623,9 @@ public sealed record AuditLogDto
  */
 function renderAuditMappings(ns) {
   return `using ${ns}.Domain.Entities;
+using ${ns}.Application.Features.AuditLogs.DTOs;
 
-namespace ${ns}.Application.Features.AuditLogs.Common;
+namespace ${ns}.Application.Features.AuditLogs.Mapping;
 
 public static class AuditLogMappings
 {
@@ -671,10 +653,10 @@ function renderAuditSearchQuery(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.AuditLogs.Common;
+using ${ns}.Application.Features.AuditLogs.DTOs;
 using ${ns}.Domain.Enums;
 
-namespace ${ns}.Application.Features.AuditLogs.Search;
+namespace ${ns}.Application.Features.AuditLogs.Queries.Search;
 
 public sealed class SearchAuditLogsQuery
     : SearchRequest, IRequest<Result<PaginationResult<AuditLogDto>>>
@@ -701,10 +683,11 @@ using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.AuditLogs.Common;
+using ${ns}.Application.Features.AuditLogs.DTOs;
+using ${ns}.Application.Features.AuditLogs.Mapping;
 using ${ns}.Domain.Entities;
 
-namespace ${ns}.Application.Features.AuditLogs.Search;
+namespace ${ns}.Application.Features.AuditLogs.Queries.Search;
 
 public sealed class SearchAuditLogsQueryHandler
     : IRequestHandler<SearchAuditLogsQuery, Result<PaginationResult<AuditLogDto>>>
@@ -784,7 +767,7 @@ function renderAuditSearchValidator(ns) {
   return `using FluentValidation;
 using ${ns}.Application.Common.Models;
 
-namespace ${ns}.Application.Features.AuditLogs.Search;
+namespace ${ns}.Application.Features.AuditLogs.Queries.Search;
 
 public sealed class SearchAuditLogsQueryValidator : AbstractValidator<SearchAuditLogsQuery>
 {
@@ -806,9 +789,9 @@ public sealed class SearchAuditLogsQueryValidator : AbstractValidator<SearchAudi
 function renderAuditGetByIdQuery(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.AuditLogs.Common;
+using ${ns}.Application.Features.AuditLogs.DTOs;
 
-namespace ${ns}.Application.Features.AuditLogs.GetById;
+namespace ${ns}.Application.Features.AuditLogs.Queries.GetById;
 
 public sealed record GetAuditLogByIdQuery(Guid Id) : IRequest<Result<AuditLogDto>>;
 `;
@@ -822,9 +805,10 @@ function renderAuditGetByIdHandler(ns) {
 using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.AuditLogs.Common;
+using ${ns}.Application.Features.AuditLogs.DTOs;
+using ${ns}.Application.Features.AuditLogs.Mapping;
 
-namespace ${ns}.Application.Features.AuditLogs.GetById;
+namespace ${ns}.Application.Features.AuditLogs.Queries.GetById;
 
 public sealed class GetAuditLogByIdQueryHandler
     : IRequestHandler<GetAuditLogByIdQuery, Result<AuditLogDto>>
@@ -884,18 +868,18 @@ function renderAuditController(ns) {
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ${ns}.Application.Common.Authorization;
-using ${ns}.API.Routing;
-using ${ns}.Application.Features.AuditLogs.GetById;
-using ${ns}.Application.Features.AuditLogs.Search;
+using ${ns}.API.Contracts;
+using ${ns}.Application.Features.AuditLogs.Queries.GetById;
+using ${ns}.Application.Features.AuditLogs.Queries.Search;
 
-namespace ${ns}.API.Controllers;
+namespace ${ns}.API.Endpoints;
 
 [Authorize]
-public sealed class AuditLogsController : ApiControllerBase
+public sealed class AuditLogsEndpoints : ApiControllerBase
 {
     private readonly ISender _sender;
 
-    public AuditLogsController(ISender sender)
+    public AuditLogsEndpoints(ISender sender)
     {
         _sender = sender;
     }

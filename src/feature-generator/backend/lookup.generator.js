@@ -1,6 +1,7 @@
 import { groupFields } from '../fields/field-mappers.js';
 import { getBackendFilePath } from '../../utils/project-paths.js';
 import { isDapperOnly, usesDapper } from './architecture.js';
+import { applicationFeatureBase } from './clean-architecture.js';
 import { renderDapperLookupHandler } from './dapper-application.generator.js';
 
 export const LOOKUP_DEFAULT_TAKE = 50;
@@ -44,17 +45,16 @@ export function planLookupFiles(config) {
     return [];
   }
 
-  const { pluralName } = config.feature;
-  const base = (...segments) =>
-    getBackendFilePath(config, 'Application', 'Features', pluralName, ...segments);
+  const { singularName, pluralName } = config.feature;
+  const base = (...segments) => applicationFeatureBase(config, ...segments);
 
   return [
     {
-      relativePath: base('Lookup', `Lookup${pluralName}Query.cs`),
+      relativePath: base('Queries', 'Lookup', `Lookup${pluralName}Query.cs`),
       contents: renderLookupQuery(config),
     },
     {
-      relativePath: base('Lookup', `Lookup${pluralName}QueryHandler.cs`),
+      relativePath: base('Queries', 'Lookup', `Lookup${pluralName}QueryHandler.cs`),
       contents: renderLookupHandler(config, display),
     },
     {
@@ -75,14 +75,14 @@ export function planLookupFiles(config) {
  * @param {object} config
  */
 export function renderLookupQuery(config) {
-  const { pluralName } = config.feature;
+  const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
 
   return `using MediatR;
 using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.${pluralName}.Lookup;
+namespace ${ns}.Application.Features.${singularName}.Queries.Lookup;
 
 public sealed record Lookup${pluralName}Query(string? Search = null, int Take = ${LOOKUP_DEFAULT_TAKE})
     : IRequest<Result<IReadOnlyList<LookupItemDto>>>;
@@ -97,7 +97,7 @@ export function renderLookupHandler(config, display) {
   if (usesDapper(config.orm)) {
     return renderDapperLookupHandler(config, display);
   }
-  const { pluralName } = config.feature;
+  const { singularName, pluralName } = config.feature;
   const ns = config.projectName;
 
   return `using MediatR;
@@ -106,7 +106,7 @@ using ${ns}.Application.Abstractions.Persistence;
 using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
 
-namespace ${ns}.Application.Features.${pluralName}.Lookup;
+namespace ${ns}.Application.Features.${singularName}.Queries.Lookup;
 
 public sealed class Lookup${pluralName}QueryHandler
     : IRequestHandler<Lookup${pluralName}Query, Result<IReadOnlyList<LookupItemDto>>>

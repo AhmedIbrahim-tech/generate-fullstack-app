@@ -91,10 +91,6 @@ async function verifyProductArchitecture(layout, framework) {
     'Domain Product entity',
   );
   await assertExists(
-    backendFile(layout, 'Domain', 'Entities', 'Generated', 'Product.Relationships.g.cs'),
-    'Product relationships partial',
-  );
-  await assertExists(
     backendFile(layout, 'Domain', 'Enums', 'ProductStatus.cs'),
     'ProductStatus enum',
   );
@@ -103,16 +99,16 @@ async function verifyProductArchitecture(layout, framework) {
     'StoredFile entity',
   );
   await assertExists(
-    backendFile(layout, 'Application', 'Features', 'Products'),
-    'Products application feature',
+    backendFile(layout, 'Application', 'Features', 'Product'),
+    'Product application feature',
   );
   await assertExists(
-    backendFile(layout, 'API', 'Controllers', 'ProductsController.cs'),
-    'Products controller',
+    backendFile(layout, 'API', 'Endpoints', 'ProductsEndpoints.cs'),
+    'Products endpoints',
   );
   await assertExists(
-    backendFile(layout, 'API', 'Routing', 'Router.Products.g.cs'),
-    'Router.Products',
+    backendFile(layout, 'API', 'Contracts', 'Router.cs'),
+    'Central Router.cs',
   );
 
   const productCs = await fs.readFile(
@@ -122,19 +118,10 @@ async function verifyProductArchitecture(layout, framework) {
   if (!productCs.includes('CategoryId')) {
     throw new Error('Product entity missing CategoryId');
   }
-  if (!productCs.includes('partial class Product')) {
-    throw new Error('Product entity is not partial');
+  if (!productCs.includes('ICollection<Tag>')) {
+    throw new Error('Product entity missing Tags collection');
   }
-  pass('Product FK + partial entity');
-
-  const relCs = await fs.readFile(
-    backendFile(layout, 'Domain', 'Entities', 'Generated', 'Product.Relationships.g.cs'),
-    'utf8',
-  );
-  if (!relCs.includes('ICollection<Tag>')) {
-    throw new Error('Product relationships missing Tags collection');
-  }
-  pass('Product Tags navigation');
+  pass('Product FK + Tags navigation');
 
   if (framework === 'angular') {
     await assertExists(

@@ -22,6 +22,7 @@ import {
   reactReducerUpdate,
   reactDashboardNavUpdate,
   finalizePlan,
+  routerUpdate,
 } from '../modules-orchestrator-helpers.js';
 import {
   buildAngularGeneratedRoutes,
@@ -47,6 +48,16 @@ export function planUsersModule(config) {
 
   // Backend ---------------------------------------------------------
   files.push(...planUsersBackend(ns));
+  registryUpdates.push(
+    routerUpdate(ns, 'Users', 'Users', [
+      { name: 'Root' },
+      { name: 'Search', suffix: '/Search' },
+      { name: 'ById', suffix: '/{id:guid}' },
+      { name: 'Create' },
+      { name: 'Update', suffix: '/{id:guid}' },
+      { name: 'ChangeRoles', suffix: '/{id:guid}/Roles' },
+    ]),
+  );
   const { file: registrationFile, registration } = moduleRegistrationFile({
     projectName: ns,
     moduleName: 'Users',
@@ -111,7 +122,7 @@ export function planUsersModule(config) {
     registryUpdates,
     registrations,
     notes: [
-      'UsersController is protected: reads require Users.View, writes require Users.Manage.',
+      'UsersEndpoints is protected: reads require Users.View, writes require Users.Manage.',
       'UserDto is intentionally minimal and never exposes password hashes or security stamps.',
       'IUserDirectory is implemented in Infrastructure over UserManager/RoleManager from the auth module.',
     ],
@@ -130,58 +141,57 @@ function planUsersBackend(ns) {
   const base = (...segments) => paths.application('Features', 'Users', ...segments);
 
   return [
-    { relativePath: base('Common', 'UserDto.cs'), contents: renderUserDto(ns) },
+    { relativePath: base('DTOs', 'UserDto.cs'), contents: renderUserDto(ns) },
     {
       relativePath: paths.application('Abstractions', 'Identity', 'IUserDirectory.cs'),
       contents: renderUserDirectoryAbstraction(ns),
     },
-    { relativePath: base('Search', 'SearchUsersQuery.cs'), contents: renderSearchQuery(ns) },
+    { relativePath: base('Queries', 'Search', 'SearchUsersQuery.cs'), contents: renderSearchQuery(ns) },
     {
-      relativePath: base('Search', 'SearchUsersQueryHandler.cs'),
+      relativePath: base('Queries', 'Search', 'SearchUsersQueryHandler.cs'),
       contents: renderSearchHandler(ns),
     },
     {
-      relativePath: base('Search', 'SearchUsersQueryValidator.cs'),
+      relativePath: base('Queries', 'Search', 'SearchUsersQueryValidator.cs'),
       contents: renderSearchValidator(ns),
     },
-    { relativePath: base('GetById', 'GetUserByIdQuery.cs'), contents: renderGetByIdQuery(ns) },
+    { relativePath: base('Queries', 'GetById', 'GetUserByIdQuery.cs'), contents: renderGetByIdQuery(ns) },
     {
-      relativePath: base('GetById', 'GetUserByIdQueryHandler.cs'),
+      relativePath: base('Queries', 'GetById', 'GetUserByIdQueryHandler.cs'),
       contents: renderGetByIdHandler(ns),
     },
-    { relativePath: base('Create', 'CreateUserCommand.cs'), contents: renderCreateCommand(ns) },
+    { relativePath: base('Commands', 'Create', 'CreateUserCommand.cs'), contents: renderCreateCommand(ns) },
     {
-      relativePath: base('Create', 'CreateUserCommandHandler.cs'),
+      relativePath: base('Commands', 'Create', 'CreateUserCommandHandler.cs'),
       contents: renderCreateHandler(ns),
     },
     {
-      relativePath: base('Create', 'CreateUserCommandValidator.cs'),
+      relativePath: base('Commands', 'Create', 'CreateUserCommandValidator.cs'),
       contents: renderCreateValidator(ns),
     },
-    { relativePath: base('Update', 'UpdateUserCommand.cs'), contents: renderUpdateCommand(ns) },
+    { relativePath: base('Commands', 'Update', 'UpdateUserCommand.cs'), contents: renderUpdateCommand(ns) },
     {
-      relativePath: base('Update', 'UpdateUserCommandHandler.cs'),
+      relativePath: base('Commands', 'Update', 'UpdateUserCommandHandler.cs'),
       contents: renderUpdateHandler(ns),
     },
     {
-      relativePath: base('Update', 'UpdateUserCommandValidator.cs'),
+      relativePath: base('Commands', 'Update', 'UpdateUserCommandValidator.cs'),
       contents: renderUpdateValidator(ns),
     },
     {
-      relativePath: base('ChangeRoles', 'ChangeUserRolesCommand.cs'),
+      relativePath: base('Commands', 'ChangeRoles', 'ChangeUserRolesCommand.cs'),
       contents: renderChangeRolesCommand(ns),
     },
     {
-      relativePath: base('ChangeRoles', 'ChangeUserRolesCommandHandler.cs'),
+      relativePath: base('Commands', 'ChangeRoles', 'ChangeUserRolesCommandHandler.cs'),
       contents: renderChangeRolesHandler(ns),
     },
     {
-      relativePath: base('ChangeRoles', 'ChangeUserRolesCommandValidator.cs'),
+      relativePath: base('Commands', 'ChangeRoles', 'ChangeUserRolesCommandValidator.cs'),
       contents: renderChangeRolesValidator(ns),
     },
-    { relativePath: paths.api('Routing', 'Router.Users.g.cs'), contents: renderRouter(ns) },
     {
-      relativePath: paths.api('Controllers', 'UsersController.cs'),
+      relativePath: paths.api('Endpoints', 'UsersEndpoints.cs'),
       contents: renderController(ns),
     },
     {
@@ -195,7 +205,7 @@ function planUsersBackend(ns) {
  * @param {string} ns
  */
 function renderUserDto(ns) {
-  return `namespace ${ns}.Application.Features.Users.Common;
+  return `namespace ${ns}.Application.Features.Users.DTOs;
 
 /// <summary>
 /// Safe projection of an identity user. Never includes password hashes,
@@ -226,7 +236,7 @@ public sealed record UserDto
 function renderUserDirectoryAbstraction(ns) {
   return `using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Users.Common;
+using ${ns}.Application.Features.Users.DTOs;
 
 namespace ${ns}.Application.Abstractions.Identity;
 
@@ -287,9 +297,9 @@ function renderSearchQuery(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Users.Common;
+using ${ns}.Application.Features.Users.DTOs;
 
-namespace ${ns}.Application.Features.Users.Search;
+namespace ${ns}.Application.Features.Users.Queries.Search;
 
 public sealed class SearchUsersQuery : SearchRequest, IRequest<Result<PaginationResult<UserDto>>>
 {
@@ -308,9 +318,9 @@ function renderSearchHandler(ns) {
 using ${ns}.Application.Abstractions.Identity;
 using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Users.Common;
+using ${ns}.Application.Features.Users.DTOs;
 
-namespace ${ns}.Application.Features.Users.Search;
+namespace ${ns}.Application.Features.Users.Queries.Search;
 
 public sealed class SearchUsersQueryHandler
     : IRequestHandler<SearchUsersQuery, Result<PaginationResult<UserDto>>>
@@ -349,7 +359,7 @@ function renderSearchValidator(ns) {
   return `using FluentValidation;
 using ${ns}.Application.Common.Models;
 
-namespace ${ns}.Application.Features.Users.Search;
+namespace ${ns}.Application.Features.Users.Queries.Search;
 
 public sealed class SearchUsersQueryValidator : AbstractValidator<SearchUsersQuery>
 {
@@ -371,9 +381,9 @@ public sealed class SearchUsersQueryValidator : AbstractValidator<SearchUsersQue
 function renderGetByIdQuery(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Users.Common;
+using ${ns}.Application.Features.Users.DTOs;
 
-namespace ${ns}.Application.Features.Users.GetById;
+namespace ${ns}.Application.Features.Users.Queries.GetById;
 
 public sealed record GetUserByIdQuery(Guid Id) : IRequest<Result<UserDto>>;
 `;
@@ -386,9 +396,9 @@ function renderGetByIdHandler(ns) {
   return `using MediatR;
 using ${ns}.Application.Abstractions.Identity;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Users.Common;
+using ${ns}.Application.Features.Users.DTOs;
 
-namespace ${ns}.Application.Features.Users.GetById;
+namespace ${ns}.Application.Features.Users.Queries.GetById;
 
 public sealed class GetUserByIdQueryHandler
     : IRequestHandler<GetUserByIdQuery, Result<UserDto>>
@@ -424,9 +434,9 @@ public sealed class GetUserByIdQueryHandler
 function renderCreateCommand(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Users.Common;
+using ${ns}.Application.Features.Users.DTOs;
 
-namespace ${ns}.Application.Features.Users.Create;
+namespace ${ns}.Application.Features.Users.Commands.Create;
 
 public sealed record CreateUserCommand : IRequest<Result<UserDto>>
 {
@@ -448,9 +458,9 @@ function renderCreateHandler(ns) {
   return `using MediatR;
 using ${ns}.Application.Abstractions.Identity;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Users.Common;
+using ${ns}.Application.Features.Users.DTOs;
 
-namespace ${ns}.Application.Features.Users.Create;
+namespace ${ns}.Application.Features.Users.Commands.Create;
 
 public sealed class CreateUserCommandHandler
     : IRequestHandler<CreateUserCommand, Result<UserDto>>
@@ -484,7 +494,7 @@ public sealed class CreateUserCommandHandler
 function renderCreateValidator(ns) {
   return `using FluentValidation;
 
-namespace ${ns}.Application.Features.Users.Create;
+namespace ${ns}.Application.Features.Users.Commands.Create;
 
 public sealed class CreateUserCommandValidator : AbstractValidator<CreateUserCommand>
 {
@@ -517,9 +527,9 @@ public sealed class CreateUserCommandValidator : AbstractValidator<CreateUserCom
 function renderUpdateCommand(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Users.Common;
+using ${ns}.Application.Features.Users.DTOs;
 
-namespace ${ns}.Application.Features.Users.Update;
+namespace ${ns}.Application.Features.Users.Commands.Update;
 
 public sealed record UpdateUserCommand : IRequest<Result<UserDto>>
 {
@@ -541,9 +551,9 @@ function renderUpdateHandler(ns) {
   return `using MediatR;
 using ${ns}.Application.Abstractions.Identity;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Users.Common;
+using ${ns}.Application.Features.Users.DTOs;
 
-namespace ${ns}.Application.Features.Users.Update;
+namespace ${ns}.Application.Features.Users.Commands.Update;
 
 public sealed class UpdateUserCommandHandler
     : IRequestHandler<UpdateUserCommand, Result<UserDto>>
@@ -577,7 +587,7 @@ public sealed class UpdateUserCommandHandler
 function renderUpdateValidator(ns) {
   return `using FluentValidation;
 
-namespace ${ns}.Application.Features.Users.Update;
+namespace ${ns}.Application.Features.Users.Commands.Update;
 
 public sealed class UpdateUserCommandValidator : AbstractValidator<UpdateUserCommand>
 {
@@ -601,9 +611,9 @@ public sealed class UpdateUserCommandValidator : AbstractValidator<UpdateUserCom
 function renderChangeRolesCommand(ns) {
   return `using MediatR;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Users.Common;
+using ${ns}.Application.Features.Users.DTOs;
 
-namespace ${ns}.Application.Features.Users.ChangeRoles;
+namespace ${ns}.Application.Features.Users.Commands.ChangeRoles;
 
 public sealed record ChangeUserRolesCommand : IRequest<Result<UserDto>>
 {
@@ -621,9 +631,9 @@ function renderChangeRolesHandler(ns) {
   return `using MediatR;
 using ${ns}.Application.Abstractions.Identity;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Users.Common;
+using ${ns}.Application.Features.Users.DTOs;
 
-namespace ${ns}.Application.Features.Users.ChangeRoles;
+namespace ${ns}.Application.Features.Users.Commands.ChangeRoles;
 
 public sealed class ChangeUserRolesCommandHandler
     : IRequestHandler<ChangeUserRolesCommand, Result<UserDto>>
@@ -651,7 +661,7 @@ public sealed class ChangeUserRolesCommandHandler
 function renderChangeRolesValidator(ns) {
   return `using FluentValidation;
 
-namespace ${ns}.Application.Features.Users.ChangeRoles;
+namespace ${ns}.Application.Features.Users.Commands.ChangeRoles;
 
 public sealed class ChangeUserRolesCommandValidator : AbstractValidator<ChangeUserRolesCommand>
 {
@@ -696,21 +706,21 @@ function renderController(ns) {
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ${ns}.Application.Common.Authorization;
-using ${ns}.API.Routing;
-using ${ns}.Application.Features.Users.ChangeRoles;
-using ${ns}.Application.Features.Users.Create;
-using ${ns}.Application.Features.Users.GetById;
-using ${ns}.Application.Features.Users.Search;
-using ${ns}.Application.Features.Users.Update;
+using ${ns}.API.Contracts;
+using ${ns}.Application.Features.Users.Commands.ChangeRoles;
+using ${ns}.Application.Features.Users.Commands.Create;
+using ${ns}.Application.Features.Users.Queries.GetById;
+using ${ns}.Application.Features.Users.Queries.Search;
+using ${ns}.Application.Features.Users.Commands.Update;
 
-namespace ${ns}.API.Controllers;
+namespace ${ns}.API.Endpoints;
 
 [Authorize]
-public sealed class UsersController : ApiControllerBase
+public sealed class UsersEndpoints : ApiControllerBase
 {
     private readonly ISender _sender;
 
-    public UsersController(ISender sender)
+    public UsersEndpoints(ISender sender)
     {
         _sender = sender;
     }
@@ -779,8 +789,8 @@ using Microsoft.EntityFrameworkCore;
 using ${ns}.Application.Abstractions.Identity;
 using ${ns}.Application.Common.Models;
 using ${ns}.Application.Common.Results;
-using ${ns}.Application.Features.Users.Common;
-using ${ns}.Infrastructure.Authentication;
+using ${ns}.Application.Features.Users.DTOs;
+using ${ns}.Infrastructure.Identity;
 
 namespace ${ns}.Infrastructure.Identity;
 

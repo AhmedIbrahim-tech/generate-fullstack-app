@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace __PASCAL_NAME__.Application.Abstractions.Persistence;
 
-public partial interface IApplicationDbContext
+public interface IApplicationDbContext
 {
     DbSet<TEntity> Set<TEntity>() where TEntity : class;
 

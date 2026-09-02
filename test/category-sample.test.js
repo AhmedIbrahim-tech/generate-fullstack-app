@@ -157,7 +157,9 @@ test('feature generator plans a CQRS Category feature', () => {
   assert.ok(paths.some((item) => item.endsWith('UpdateCategoryCommand.cs')));
   assert.ok(paths.some((item) => item.endsWith('DeleteCategoryCommand.cs')));
   assert.ok(paths.some((item) => item.endsWith('GetCategoryByIdQuery.cs')));
-  assert.ok(paths.some((item) => item.endsWith('CategoriesController.cs')));
+  assert.ok(paths.some((item) => item.endsWith('CategoriesEndpoints.cs')));
+  assert.ok(paths.some((item) => item.includes('Features/Category/Commands/Create/')));
+  assert.ok(paths.every((item) => !item.includes('.g.cs')));
   assert.ok(paths.some((item) => item.endsWith('CategoryConfiguration.cs')));
   assert.match(joined, /CreateCategoryCommandHandler/);
   assert.match(joined, /IRequestHandler/);
@@ -173,7 +175,7 @@ test('feature generator plans Application Services Category types', () => {
 
   assert.ok(paths.some((item) => item.endsWith('ICategoriesService.cs')));
   assert.ok(paths.some((item) => item.endsWith('CategoriesService.cs')));
-  assert.ok(paths.some((item) => item.endsWith('CategoriesController.cs')));
+  assert.ok(paths.some((item) => item.endsWith('CategoriesEndpoints.cs')));
   assert.match(joined, /ICategoriesService/);
   assert.doesNotMatch(joined, /IRequestHandler/);
 });

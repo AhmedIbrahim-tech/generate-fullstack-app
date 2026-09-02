@@ -5,7 +5,7 @@ using __PASCAL_NAME__.Domain.Common;
 
 namespace __PASCAL_NAME__.Infrastructure.Persistence;
 
-public partial class ApplicationDbContext : DbContext, IApplicationDbContext
+public class ApplicationDbContext : DbContext, IApplicationDbContext
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
         : base(options)

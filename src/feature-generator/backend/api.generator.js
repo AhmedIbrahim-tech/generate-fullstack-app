@@ -6,6 +6,7 @@ import {
   controllerAuthorizationAttribute,
   methodPermissionAttribute,
 } from './authorization.js';
+import { applicationFeatureName, planRouterUpdate } from './clean-architecture.js';
 
 /**
  * @param {object} config
@@ -16,11 +17,7 @@ export function planApiFiles(config) {
 
   return [
     {
-      relativePath: getBackendFilePath(config, 'API', 'Routing', `Router.${pluralName}.g.cs`),
-      contents: renderRouter(config),
-    },
-    {
-      relativePath: getBackendFilePath(config, 'API', 'Controllers', `${pluralName}Controller.cs`),
+      relativePath: getBackendFilePath(config, 'API', 'Endpoints', `${pluralName}Endpoints.cs`),
       contents: isServicesArchitecture(config.architecture)
         ? renderServiceController(config)
         : renderController(config),
@@ -31,56 +28,37 @@ export function planApiFiles(config) {
 /**
  * @param {object} config
  */
-function renderRouter(config) {
+export function planApiRegistryUpdates(config) {
   const { pluralName } = config.feature;
-  const ns = config.projectName;
   const ops = config.operations;
-
-  /** @type {string[]} */
-  const constants = [
-    `        public const string Root = Rule + "/${pluralName}";`,
-  ];
+  /** @type {{ name: string, suffix?: string }[]} */
+  const routes = [{ name: 'Root' }];
 
   if (ops.search) {
-    constants.push(`        public const string Search = Root + "/Search";`);
+    routes.push({ name: 'Search', suffix: '/Search' });
   }
-
   if (canBeLookupTarget(config)) {
-    constants.push(`        public const string Lookup = Root + "/Lookup";`);
+    routes.push({ name: 'Lookup', suffix: '/Lookup' });
   }
-
   if (ops.getById) {
-    constants.push(`        public const string ById = Root + "/{id:guid}";`);
+    routes.push({ name: 'ById', suffix: '/{id:guid}' });
   }
-
   if (ops.create) {
-    constants.push(`        public const string Create = Root;`);
+    routes.push({ name: 'Create' });
   }
-
   if (ops.update) {
-    constants.push(`        public const string Update = Root + "/{id:guid}";`);
+    routes.push({ name: 'Update', suffix: '/{id:guid}' });
   }
-
   if (ops.delete) {
-    constants.push(`        public const string Delete = Root + "/{id:guid}";`);
+    routes.push({ name: 'Delete', suffix: '/{id:guid}' });
   }
-
   if (ops.restore) {
-    constants.push(
-      `        public const string Restore = Root + "/{id:guid}/Restore";`,
-    );
+    routes.push({ name: 'Restore', suffix: '/{id:guid}/Restore' });
   }
 
-  return `namespace ${ns}.API.Routing;
-
-public static partial class Router
-{
-    public static class ${pluralName}
-    {
-${constants.join('\n')}
-    }
-}
-`;
+  return [
+    planRouterUpdate(config, config.projectName, pluralName, pluralName, routes),
+  ];
 }
 
 /**
@@ -95,36 +73,36 @@ function renderController(config) {
   const usings = [
     'using MediatR;',
     'using Microsoft.AspNetCore.Mvc;',
-    `using ${ns}.API.Routing;`,
+    `using ${ns}.API.Contracts;`,
     ...authorizationUsings(config),
   ];
 
   if (ops.search) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Search;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Queries.Search;`);
   }
 
   if (canBeLookupTarget(config)) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Lookup;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Queries.Lookup;`);
   }
 
   if (ops.getById) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.GetById;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Queries.GetById;`);
   }
 
   if (ops.create) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Create;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Commands.Create;`);
   }
 
   if (ops.update) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Update;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Commands.Update;`);
   }
 
   if (ops.delete) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Delete;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Commands.Delete;`);
   }
 
   if (ops.restore) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Restore;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Commands.Restore;`);
   }
 
   /** @type {string[]} */
@@ -212,13 +190,13 @@ function renderController(config) {
 
   return `${usings.join('\n')}
 
-namespace ${ns}.API.Controllers;
+namespace ${ns}.API.Endpoints;
 
-${controllerAuthorizationAttribute(config)}public sealed class ${pluralName}Controller : ApiControllerBase
+${controllerAuthorizationAttribute(config)}public sealed class ${pluralName}Endpoints : ApiControllerBase
 {
     private readonly ISender _sender;
 
-    public ${pluralName}Controller(ISender sender)
+    public ${pluralName}Endpoints(ISender sender)
     {
         _sender = sender;
     }
@@ -239,31 +217,31 @@ function renderServiceController(config) {
   /** @type {string[]} */
   const usings = [
     'using Microsoft.AspNetCore.Mvc;',
-    `using ${ns}.API.Routing;`,
-    `using ${ns}.Application.Features.${pluralName}.Services;`,
+    `using ${ns}.API.Contracts;`,
+    `using ${ns}.Application.Features.${applicationFeatureName(config)}.Interfaces;`,
     ...authorizationUsings(config),
   ];
 
   if (ops.search) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Search;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Queries.Search;`);
   }
   if (canBeLookupTarget(config)) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Lookup;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Queries.Lookup;`);
   }
   if (ops.getById) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.GetById;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Queries.GetById;`);
   }
   if (ops.create) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Create;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Commands.Create;`);
   }
   if (ops.update) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Update;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Commands.Update;`);
   }
   if (ops.delete) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Delete;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Commands.Delete;`);
   }
   if (ops.restore) {
-    usings.push(`using ${ns}.Application.Features.${pluralName}.Restore;`);
+    usings.push(`using ${ns}.Application.Features.${applicationFeatureName(config)}.Commands.Restore;`);
   }
 
   /** @type {string[]} */
@@ -351,13 +329,13 @@ function renderServiceController(config) {
 
   return `${usings.join('\n')}
 
-namespace ${ns}.API.Controllers;
+namespace ${ns}.API.Endpoints;
 
-${controllerAuthorizationAttribute(config)}public sealed class ${pluralName}Controller : ApiControllerBase
+${controllerAuthorizationAttribute(config)}public sealed class ${pluralName}Endpoints : ApiControllerBase
 {
     private readonly I${pluralName}Service _service;
 
-    public ${pluralName}Controller(I${pluralName}Service service)
+    public ${pluralName}Endpoints(I${pluralName}Service service)
     {
         _service = service;
     }
